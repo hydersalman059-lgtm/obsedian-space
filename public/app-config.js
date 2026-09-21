@@ -1,0 +1,1 @@
+window.OBSEDIAN_CONFIG={SUPABASE_URL:"https://ssfntnqcqvpexvnqvkus.supabase.co",SUPABASE_PUBLISHABLE_KEY:"sb_publishable_hDxtskIUqoZwgDTQvto0bQ_LhVRE1mO"};

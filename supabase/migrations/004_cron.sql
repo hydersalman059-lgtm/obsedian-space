@@ -1,0 +1,3 @@
+-- Enable pg_cron in the Supabase Dashboard before running this migration if your project exposes the extension.
+-- The following job keeps subscription state deterministic.
+-- select cron.schedule('obsedian-pause-expired','*/5 * * * *','select public.pause_expired_subscriptions();');

@@ -1,0 +1,3 @@
+const sb=supabase.createClient(window.OBSEDIAN_CONFIG.SUPABASE_URL,window.OBSEDIAN_CONFIG.SUPABASE_PUBLISHABLE_KEY);
+async function load(){let {data:{session}}=await sb.auth.getSession();if(!session){location.href="/app/";return}let r=await fetch("/api/admin",{headers:{Authorization:`Bearer ${session.access_token}`}}),d=await r.json();if(!r.ok){document.body.innerHTML="<main><div class='card'><h1>Access denied</h1></div></main>";return}$("metrics").innerHTML=Object.entries(d.metrics||{}).map(([k,v])=>`<div class="stat"><small>${k}</small><br><b>${v}</b></div>`).join("");$("logs").textContent=JSON.stringify(d.logs||[],null,2)}
+const $=id=>document.getElementById(id);$("refresh").onclick=load;load();
