@@ -25,7 +25,6 @@ let loading = false;
 
 async function boot() {
 
-    // First check the existing browser session
     const {
         data: { session: currentSession }
     } = await sb.auth.getSession();
@@ -34,7 +33,6 @@ async function boot() {
 
     paint();
 
-    // Listen for magic-link / OAuth / logout events
     sb.auth.onAuthStateChange(async (event, newSession) => {
 
         console.log("Auth event:", event);
@@ -89,6 +87,7 @@ async function oauth(provider) {
 $("google").onclick = () => oauth("google");
 $("github").onclick = () => oauth("github");
 
+
 /* =========================
    EMAIL + PASSWORD LOGIN
 ========================= */
@@ -111,6 +110,7 @@ $("passwordBtn").onclick = async () => {
     }
 
     $("passwordBtn").disabled = true;
+
     $("msg").textContent =
         "Signing in...";
 
@@ -153,19 +153,24 @@ $("emailBtn").onclick = async () => {
     const email = $("email").value.trim();
 
     if (!email) {
-        $("msg").textContent = "Please enter your email.";
+        $("msg").textContent =
+            "Please enter your email.";
         return;
     }
 
     $("emailBtn").disabled = true;
-    $("msg").textContent = "Sending email link...";
 
-    const { error } = await sb.auth.signInWithOtp({
-        email,
-        options: {
-            emailRedirectTo: `${window.location.origin}/app/`
-        }
-    });
+    $("msg").textContent =
+        "Sending email link...";
+
+    const { error } =
+        await sb.auth.signInWithOtp({
+            email,
+            options: {
+                emailRedirectTo:
+                    `${window.location.origin}/app/`
+            }
+        });
 
     $("emailBtn").disabled = false;
 
@@ -181,19 +186,24 @@ $("emailBtn").onclick = async () => {
 
 $("phoneBtn").onclick = async () => {
 
-    const phone = $("phone").value.trim();
+    const phone =
+        $("phone").value.trim();
 
     if (!phone) {
-        $("msg").textContent = "Please enter your phone number.";
+        $("msg").textContent =
+            "Please enter your phone number.";
         return;
     }
 
     $("phoneBtn").disabled = true;
-    $("msg").textContent = "Sending OTP...";
 
-    const { error } = await sb.auth.signInWithOtp({
-        phone
-    });
+    $("msg").textContent =
+        "Sending OTP...";
+
+    const { error } =
+        await sb.auth.signInWithOtp({
+            phone
+        });
 
     $("phoneBtn").disabled = false;
 
@@ -240,13 +250,22 @@ async function load() {
                 "there"
             );
 
-        const [subR, siteR, apR] = await Promise.all([
+        const [
+            subR,
+            siteR,
+            apR
+        ] = await Promise.all([
 
             sb
                 .from("subscriptions")
                 .select("*,plans(*)")
                 .eq("user_id", u.id)
-                .order("created_at", { ascending: false })
+                .order(
+                    "created_at",
+                    {
+                        ascending: false
+                    }
+                )
                 .limit(1)
                 .maybeSingle(),
 
@@ -254,52 +273,81 @@ async function load() {
                 .from("websites")
                 .select("*")
                 .eq("user_id", u.id)
-                .order("created_at", { ascending: false }),
+                .order(
+                    "created_at",
+                    {
+                        ascending: false
+                    }
+                ),
 
             sb
                 .from("approvals")
                 .select("*")
                 .eq("user_id", u.id)
-                .order("created_at", { ascending: false })
+                .order(
+                    "created_at",
+                    {
+                        ascending: false
+                    }
+                )
                 .limit(20)
         ]);
 
 
         if (subR.error) {
-            console.error("Subscription error:", subR.error);
+            console.error(
+                "Subscription error:",
+                subR.error
+            );
         }
 
         if (siteR.error) {
-            console.error("Website error:", siteR.error);
+            console.error(
+                "Website error:",
+                siteR.error
+            );
         }
 
         if (apR.error) {
-            console.error("Approval error:", apR.error);
+            console.error(
+                "Approval error:",
+                apR.error
+            );
         }
 
 
-        const sub = subR.data;
-        const sites = siteR.data || [];
+        const sub =
+            subR.data;
 
-        currentSites = sites;
+        const sites =
+            siteR.data || [];
+
+        currentSites =
+            sites;
 
 
         $("badge").textContent =
-            sub?.plans?.name || "Free";
+            sub?.plans?.name ||
+            "Free";
 
 
         $("stats").innerHTML = [
 
-            ["Websites", sites.length],
+            [
+                "Websites",
+                sites.length
+            ],
 
             [
                 "Limit",
-                sub?.plans?.max_websites || 0
+                sub?.plans?.max_websites ||
+                0
             ],
 
             [
                 "Status",
-                sub?.status || "—"
+                sub?.status ||
+                "—"
             ],
 
             [
@@ -366,13 +414,13 @@ async function load() {
                             ${
                                 a.status === "pending"
                                     ? `
-                                    <button onclick="approve('${a.id}')">
-                                        Approve
-                                    </button>
+                                        <button onclick="approve('${a.id}')">
+                                            Approve
+                                        </button>
 
-                                    <button onclick="reject('${a.id}')">
-                                        Reject
-                                    </button>
+                                        <button onclick="reject('${a.id}')">
+                                            Reject
+                                        </button>
                                     `
                                     : ""
                             }
@@ -401,8 +449,11 @@ $("add").onclick = async () => {
         return;
     }
 
-    const url = $("url").value.trim();
-    const name = $("name").value.trim();
+    const url =
+        $("url").value.trim();
+
+    const name =
+        $("name").value.trim();
 
     if (!url) {
         alert("Please enter a website URL.");
@@ -413,30 +464,46 @@ $("add").onclick = async () => {
 
     try {
 
-        normalizedUrl = new URL(url).origin;
+        normalizedUrl =
+            new URL(url).origin;
 
     } catch {
 
-        alert("Please enter a valid URL, for example https://example.com");
+        alert(
+            "Please enter a valid URL, for example https://example.com"
+        );
+
         return;
     }
 
 
-    const { error } = await sb
-        .from("websites")
-        .insert({
-            user_id: session.user.id,
-            url,
-            normalized_url: normalizedUrl,
-            name,
-            status: "pending",
-            next_crawl_at: new Date().toISOString()
-        });
+    const { error } =
+        await sb
+            .from("websites")
+            .insert({
+                user_id:
+                    session.user.id,
+
+                url,
+
+                normalized_url:
+                    normalizedUrl,
+
+                name,
+
+                status:
+                    "pending",
+
+                next_crawl_at:
+                    new Date().toISOString()
+            });
 
 
     if (error) {
 
-        alert(error.message);
+        alert(
+            error.message
+        );
 
     } else {
 
@@ -455,16 +522,22 @@ $("add").onclick = async () => {
 async function agent(
     agent,
     task,
-    provider = "openai"
+    provider = "gemini"
 ) {
 
     if (!currentSites[0]) {
-        alert("Add a website first");
+
+        alert(
+            "Add a website first"
+        );
+
         return;
     }
 
+
     $("out").textContent =
         "AI agent running…";
+
 
     try {
 
@@ -474,6 +547,7 @@ async function agent(
             }
         } =
             await sb.auth.getSession();
+
 
         if (!currentSession) {
 
@@ -515,7 +589,8 @@ async function agent(
 
                             task,
 
-                            provider,
+                            provider:
+                                "gemini",
 
                             website_id:
                                 currentSites[0].id,
@@ -533,14 +608,11 @@ async function agent(
 
 
         /*
-         * IMPORTANT:
-         * Read as TEXT first.
+         * Read response as TEXT first.
          *
-         * If Cloudflare/Supabase returns
-         * "Internal Server Error",
-         * response.json() would hide the
-         * real response behind a JSON
-         * parsing error.
+         * This prevents a plain-text Cloudflare/
+         * Supabase error from being hidden by
+         * response.json().
          */
 
         const responseText =
@@ -612,6 +684,7 @@ async function agent(
     }
 }
 
+
 /* =========================
    AI BUTTONS
 ========================= */
@@ -619,21 +692,30 @@ async function agent(
 $("audit").onclick = () =>
     agent(
         "seo_auditor",
-        "Audit technical SEO, on-page SEO, content quality and observable performance. Return evidence-backed prioritized recommendations."
+
+        "Audit technical SEO, on-page SEO, content quality and observable performance. Return evidence-backed prioritized recommendations.",
+
+        "gemini"
     );
 
 
 $("strategy").onclick = () =>
     agent(
         "seo_strategist",
-        "Create a 30-day SEO strategy with keyword themes, page opportunities, internal linking and content briefs. Mark assumptions."
+
+        "Create a 30-day SEO strategy with keyword themes, page opportunities, internal linking and content briefs. Mark assumptions.",
+
+        "gemini"
     );
 
 
 $("report").onclick = () =>
     agent(
         "executive_report",
-        "Create a weekly executive report template based on currently available website signals. Never invent traffic or rankings."
+
+        "Create a weekly executive report template based on currently available website signals. Never invent traffic or rankings.",
+
+        "gemini"
     );
 
 
@@ -642,112 +724,176 @@ $("report").onclick = () =>
 ========================= */
 
 document
-    .querySelectorAll("[data-plan]")
-    .forEach(button => {
+    .querySelectorAll(
+        "[data-plan]"
+    )
+    .forEach(
+        button => {
 
-        button.onclick = async () => {
+            button.onclick =
+                async () => {
 
-            const {
-                data: { session: currentSession }
-            } = await sb.auth.getSession();
-
-
-            if (!currentSession) {
-                alert("Please sign in first.");
-                return;
-            }
-
-
-            const response = await fetch(
-                "/api/checkout",
-                {
-                    method: "POST",
-
-                    headers: {
-                        Authorization:
-                            `Bearer ${currentSession.access_token}`,
-
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body: JSON.stringify({
-                        plan: button.dataset.plan,
-                        billing_cycle: "monthly"
-                    })
-                }
-            );
+                    const {
+                        data: {
+                            session:
+                                currentSession
+                        }
+                    } =
+                        await sb.auth.getSession();
 
 
-            alert(
-                JSON.stringify(
-                    await response.json()
-                )
-            );
-        };
-    });
+                    if (!currentSession) {
+
+                        alert(
+                            "Please sign in first."
+                        );
+
+                        return;
+                    }
+
+
+                    const response =
+                        await fetch(
+                            "/api/checkout",
+                            {
+                                method:
+                                    "POST",
+
+                                headers: {
+
+                                    Authorization:
+                                        `Bearer ${currentSession.access_token}`,
+
+                                    "Content-Type":
+                                        "application/json"
+                                },
+
+                                body:
+                                    JSON.stringify({
+
+                                        plan:
+                                            button.dataset.plan,
+
+                                        billing_cycle:
+                                            "monthly"
+
+                                    })
+                            }
+                        );
+
+
+                    alert(
+                        JSON.stringify(
+                            await response.json()
+                        )
+                    );
+                };
+        }
+    );
 
 
 /* =========================
    SUPPORT
 ========================= */
 
-$("ticket").onclick = async () => {
+$("ticket").onclick =
+    async () => {
 
-    if (!session) {
-        alert("Please sign in first.");
-        return;
-    }
+        if (!session) {
 
-    const {
-        error
-    } = await sb
-        .from("support_tickets")
-        .insert({
-            user_id: session.user.id,
-            subject: $("subject").value,
-            message: $("support").value
-        });
+            alert(
+                "Please sign in first."
+            );
+
+            return;
+        }
 
 
-    alert(
-        error?.message ||
-        "Ticket created"
-    );
-};
+        const {
+            error
+        } =
+            await sb
+                .from(
+                    "support_tickets"
+                )
+                .insert({
+
+                    user_id:
+                        session.user.id,
+
+                    subject:
+                        $("subject").value,
+
+                    message:
+                        $("support").value
+
+                });
+
+
+        alert(
+            error?.message ||
+            "Ticket created"
+        );
+    };
 
 
 /* =========================
    APPROVALS
 ========================= */
 
-window.approve = async id => {
+window.approve =
+    async id => {
 
-    await sb
-        .from("approvals")
-        .update({
-            status: "approved",
-            approved_at: new Date().toISOString()
-        })
-        .eq("id", id)
-        .eq("user_id", session.user.id);
+        await sb
+            .from(
+                "approvals"
+            )
+            .update({
 
-    await load();
-};
+                status:
+                    "approved",
+
+                approved_at:
+                    new Date().toISOString()
+
+            })
+            .eq(
+                "id",
+                id
+            )
+            .eq(
+                "user_id",
+                session.user.id
+            );
+
+        await load();
+    };
 
 
-window.reject = async id => {
+window.reject =
+    async id => {
 
-    await sb
-        .from("approvals")
-        .update({
-            status: "rejected"
-        })
-        .eq("id", id)
-        .eq("user_id", session.user.id);
+        await sb
+            .from(
+                "approvals"
+            )
+            .update({
 
-    await load();
-};
+                status:
+                    "rejected"
+
+            })
+            .eq(
+                "id",
+                id
+            )
+            .eq(
+                "user_id",
+                session.user.id
+            );
+
+        await load();
+    };
 
 
 /* =========================
