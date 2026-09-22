@@ -1,41 +1,1941 @@
-import {client,userFrom} from "../_shared/auth.ts";
-import {json,cors} from "../_shared/cors.ts";
+import {
+    userFrom,
+    userClient
+} from "../_shared/auth.ts";
 
-async function openai(prompt:string){
- const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Authorization":`Bearer ${Deno.env.get("OPENAI_API_KEY")}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-5-mini",input:prompt})});
- return await r.json();
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function cleanUrl(value: string): string {
+    let url = value.trim();
+
+    if (!/^https?:\/\//i.test(url)) {
+        url = "https://" + url;
+    }
+
+    return new URL(url).toString();
 }
-async function claude(prompt:string){
- const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":Deno.env.get("ANTHROPIC_API_KEY")!,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:3000,messages:[{role:"user",content:prompt}]})});
- return await r.json();
+
+
+function extractTag(html: string, tag: string): string | null {
+    const regex = new RegExp(
+        `<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`,
+        "i"
+    );
+
+    const match = html.match(regex);
+
+    if (!match) return null;
+
+    return match[1]
+        .replace(/<[^>]+>/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
 }
-async function gemini(prompt:string){
- const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${Deno.env.get("GEMINI_API_KEY")}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
- return await r.json();
+
+
+function extractMeta(
+    html: string,
+    name: string
+): string | null {
+
+    const regex1 = new RegExp(
+        `<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']*)["'][^>]*>`,
+        "i"
+    );
+
+    const regex2 = new RegExp(
+        `<meta[^>]+content=["']([^"']*)["'][^>]+name=["']${name}["'][^>]*>`,
+        "i"
+    );
+
+    const match =
+        html.match(regex1) ||
+        html.match(regex2);
+
+    return match ? match[1].trim() : null;
 }
-async function perplexity(prompt:string){
- const r=await fetch("https://api.perplexity.ai/chat/completions",{method:"POST",headers:{"Authorization":`Bearer ${Deno.env.get("PERPLEXITY_API_KEY")}`,"Content-Type":"application/json"},body:JSON.stringify({model:"sonar",messages:[{role:"user",content:prompt}]})});
- return await r.json();
+
+
+function extractCanonical(html: string): string | null {
+
+    const regex1 =
+        /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["'][^>]*>/i;
+
+    const regex2 =
+        /<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["'][^>]*>/i;
+
+    const match =
+        html.match(regex1) ||
+        html.match(regex2);
+
+    return match ? match[1].trim() : null;
 }
-Deno.serve(async(req)=>{
- if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
- const user=await userFrom(req); if(!user)return json({error:"Unauthorized"},401);
- const sb=client(); const body=await req.json(); const provider=body.provider||"openai";
- const {data:ent}=await sb.rpc("current_entitlement");
- if(!ent?.[0] || !["trial","active"].includes(ent[0].status) || (ent[0].ends_at && new Date(ent[0].ends_at)<=new Date()))
-   return json({error:"subscription_paused"},402);
- const prompt=`You are an Obsedian.Space ${body.agent||"marketing"} agent.
-Rules: use evidence; never invent traffic/rankings/conversions; identify estimates; return JSON where possible; ad execution must remain approval-gated.
-Website context:
-${JSON.stringify(body.context||{})}
+
+
+function getText(html: string): string {
+
+    return html
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+
+function countMatches(
+    html: string,
+    regex: RegExp
+): number {
+
+    return (html.match(regex) || []).length;
+}
+
+
+function extractLinks(
+    html: string,
+    baseUrl: string
+): string[] {
+
+    const links: string[] = [];
+
+    const regex =
+        /<a[^>]+href=["']([^"']+)["'][^>]*>/gi;
+
+    let match;
+
+    while (
+        (match = regex.exec(html)) !== null
+    ) {
+
+        const href = match[1];
+
+        if (
+            href.startsWith("#") ||
+            href.startsWith("mailto:") ||
+            href.startsWith("tel:") ||
+            href.startsWith("javascript:")
+        ) {
+            continue;
+        }
+
+        try {
+
+            const url =
+                new URL(
+                    href,
+                    baseUrl
+                ).toString();
+
+            links.push(url);
+
+        } catch {
+            // Ignore invalid URLs
+        }
+    }
+
+    return [
+        ...new Set(links)
+    ];
+}
+
+
+function extractImages(html: string) {
+
+    const images: {
+        src: string;
+        alt: string | null;
+    }[] = [];
+
+    const regex =
+        /<img\b([^>]*)>/gi;
+
+    let match;
+
+    while (
+        (match = regex.exec(html)) !== null
+    ) {
+
+        const attributes =
+            match[1];
+
+        const srcMatch =
+            attributes.match(
+                /src=["']([^"']+)["']/i
+            );
+
+        const altMatch =
+            attributes.match(
+                /alt=["']([^"']*)["']/i
+            );
+
+        if (srcMatch) {
+
+            images.push({
+                src: srcMatch[1],
+                alt:
+                    altMatch
+                        ? altMatch[1]
+                        : null
+            });
+        }
+    }
+
+    return images;
+}
+
+
+/* =========================================================
+   FETCH PAGE
+========================================================= */
+
+async function fetchPage(url: string) {
+
+    const started =
+        Date.now();
+
+    try {
+
+        const response =
+            await fetch(
+                url,
+                {
+                    method: "GET",
+                    redirect: "follow",
+
+                    headers: {
+                        "User-Agent":
+                            "Mozilla/5.0 (compatible; ObsedianSpaceBot/1.0; +https://obsedian.space)",
+
+                        "Accept":
+                            "text/html,application/xhtml+xml"
+                    }
+                }
+            );
+
+        const html =
+            await response.text();
+
+        return {
+
+            ok:
+                response.ok,
+
+            status:
+                response.status,
+
+            finalUrl:
+                response.url,
+
+            html,
+
+            contentType:
+                response.headers.get(
+                    "content-type"
+                ) || "",
+
+            responseTimeMs:
+                Date.now() - started
+
+        };
+
+    } catch (error) {
+
+        return {
+
+            ok: false,
+
+            status: 0,
+
+            finalUrl: url,
+
+            html: "",
+
+            contentType: "",
+
+            responseTimeMs:
+                Date.now() - started,
+
+            error:
+                error instanceof Error
+                    ? error.message
+                    : String(error)
+
+        };
+    }
+}
+
+
+/* =========================================================
+   TEXT FILE FETCH
+========================================================= */
+
+async function fetchTextFile(url: string) {
+
+    try {
+
+        const response =
+            await fetch(
+                url,
+                {
+                    method: "GET",
+                    redirect: "follow",
+
+                    headers: {
+                        "User-Agent":
+                            "Mozilla/5.0 (compatible; ObsedianSpaceBot/1.0)"
+                    }
+                }
+            );
+
+        return {
+
+            ok:
+                response.ok,
+
+            status:
+                response.status,
+
+            text:
+                await response.text()
+
+        };
+
+    } catch {
+
+        return {
+
+            ok: false,
+
+            status: 0,
+
+            text: ""
+
+        };
+    }
+}
+
+
+/* =========================================================
+   PAGE ANALYSIS
+========================================================= */
+
+function analyzePage(
+    url: string,
+    html: string,
+    responseTimeMs: number
+) {
+
+    const title =
+        extractTag(
+            html,
+            "title"
+        );
+
+    const description =
+        extractMeta(
+            html,
+            "description"
+        );
+
+    const canonical =
+        extractCanonical(
+            html
+        );
+
+    const h1Count =
+        countMatches(
+            html,
+            /<h1\b[^>]*>/gi
+        );
+
+    const h2Count =
+        countMatches(
+            html,
+            /<h2\b[^>]*>/gi
+        );
+
+    const h3Count =
+        countMatches(
+            html,
+            /<h3\b[^>]*>/gi
+        );
+
+    const images =
+        extractImages(
+            html
+        );
+
+    const imagesWithoutAlt =
+        images.filter(
+            image =>
+                !image.alt ||
+                !image.alt.trim()
+        ).length;
+
+    const links =
+        extractLinks(
+            html,
+            url
+        );
+
+    const text =
+        getText(
+            html
+        );
+
+    const wordCount =
+        text
+            ? text.split(/\s+/).length
+            : 0;
+
+    const viewport =
+        /<meta[^>]+name=["']viewport["']/i
+            .test(html);
+
+    const charset =
+        /<meta[^>]+charset=/i
+            .test(html);
+
+    const noindex =
+        /<meta[^>]+name=["']robots["'][^>]+content=["'][^"']*noindex/i
+            .test(html) ||
+
+        /<meta[^>]+content=["'][^"']*noindex[^"']*["'][^>]+name=["']robots["']/i
+            .test(html);
+
+    const structuredData =
+        countMatches(
+            html,
+            /<script[^>]+type=["']application\/ld\+json["']/gi
+        );
+
+    const https =
+        url.startsWith(
+            "https://"
+        );
+
+    return {
+
+        title: {
+            value:
+                title,
+
+            exists:
+                !!title,
+
+            length:
+                title?.length || 0
+        },
+
+        meta_description: {
+
+            value:
+                description,
+
+            exists:
+                !!description,
+
+            length:
+                description?.length || 0
+        },
+
+        canonical: {
+
+            value:
+                canonical,
+
+            exists:
+                !!canonical
+        },
+
+        headings: {
+
+            h1:
+                h1Count,
+
+            h2:
+                h2Count,
+
+            h3:
+                h3Count
+        },
+
+        images: {
+
+            total:
+                images.length,
+
+            missing_alt:
+                imagesWithoutAlt
+        },
+
+        links: {
+
+            total:
+                links.length
+        },
+
+        content: {
+
+            word_count:
+                wordCount
+        },
+
+        technical: {
+
+            https,
+
+            viewport,
+
+            charset,
+
+            noindex,
+
+            structured_data_blocks:
+                structuredData,
+
+            response_time_ms:
+                responseTimeMs
+        }
+
+    };
+}
+
+
+/* =========================================================
+   CRAWLER
+========================================================= */
+
+async function crawlWebsite(
+    websiteUrl: string
+) {
+
+    const root =
+        new URL(
+            websiteUrl
+        );
+
+    const homepage =
+        await fetchPage(
+            root.toString()
+        );
+
+    const analysis =
+        homepage.ok
+            ? analyzePage(
+                homepage.finalUrl,
+                homepage.html,
+                homepage.responseTimeMs
+            )
+            : null;
+
+
+    const robots =
+        await fetchTextFile(
+            new URL(
+                "/robots.txt",
+                root.origin
+            ).toString()
+        );
+
+
+    const sitemap =
+        await fetchTextFile(
+            new URL(
+                "/sitemap.xml",
+                root.origin
+            ).toString()
+        );
+
+
+    let internalLinks: string[] = [];
+
+
+    if (homepage.ok) {
+
+        internalLinks =
+            extractLinks(
+                homepage.html,
+                homepage.finalUrl
+            )
+            .filter(link => {
+
+                try {
+
+                    return (
+                        new URL(
+                            link
+                        ).hostname ===
+                        root.hostname
+                    );
+
+                } catch {
+
+                    return false;
+                }
+
+            })
+            .slice(
+                0,
+                10
+            );
+    }
+
+
+    return {
+
+        website: {
+
+            requested_url:
+                websiteUrl,
+
+            final_url:
+                homepage.finalUrl,
+
+            hostname:
+                root.hostname
+
+        },
+
+        homepage: {
+
+            fetched:
+                homepage.ok,
+
+            status:
+                homepage.status,
+
+            content_type:
+                homepage.contentType,
+
+            response_time_ms:
+                homepage.responseTimeMs,
+
+            error:
+                homepage.error ||
+                null,
+
+            analysis
+
+        },
+
+        robots: {
+
+            exists:
+                robots.ok,
+
+            status:
+                robots.status,
+
+            content:
+                robots.text.slice(
+                    0,
+                    10000
+                )
+
+        },
+
+        sitemap: {
+
+            exists:
+                sitemap.ok,
+
+            status:
+                sitemap.status,
+
+            content:
+                sitemap.text.slice(
+                    0,
+                    10000
+                )
+
+        },
+
+        internal_links:
+            internalLinks
+
+    };
+}
+
+
+/* =========================================================
+   OPENAI
+========================================================= */
+
+async function openai(
+    prompt: string
+) {
+
+    const apiKey =
+        Deno.env.get(
+            "OPENAI_API_KEY"
+        );
+
+
+    if (!apiKey) {
+
+        throw new Error(
+            "OPENAI_API_KEY is not configured."
+        );
+    }
+
+
+    const response =
+        await fetch(
+            "https://api.openai.com/v1/responses",
+            {
+                method: "POST",
+
+                headers: {
+
+                    "Authorization":
+                        `Bearer ${apiKey}`,
+
+                    "Content-Type":
+                        "application/json"
+
+                },
+
+                body:
+                    JSON.stringify({
+
+                        model:
+                            "gpt-5-mini",
+
+                        input:
+                            prompt
+
+                    })
+
+            }
+        );
+
+
+    const data =
+        await response.json();
+
+
+    if (!response.ok) {
+
+        throw new Error(
+            data?.error?.message ||
+            `OpenAI request failed with HTTP ${response.status}`
+        );
+    }
+
+
+    return data;
+}
+
+
+/* =========================================================
+   OPENAI TEXT
+========================================================= */
+
+function extractOpenAIText(
+    result: any
+): string {
+
+    if (
+        typeof result?.output_text ===
+        "string"
+    ) {
+
+        return result.output_text;
+    }
+
+
+    if (
+        Array.isArray(
+            result?.output
+        )
+    ) {
+
+        const parts: string[] = [];
+
+
+        for (
+            const item
+            of result.output
+        ) {
+
+            if (
+                Array.isArray(
+                    item?.content
+                )
+            ) {
+
+                for (
+                    const content
+                    of item.content
+                ) {
+
+                    if (
+                        typeof content?.text ===
+                        "string"
+                    ) {
+
+                        parts.push(
+                            content.text
+                        );
+                    }
+                }
+            }
+        }
+
+
+        if (parts.length) {
+
+            return parts.join(
+                "\n"
+            );
+        }
+    }
+
+
+    return JSON.stringify(
+        result
+    );
+}
+
+
+/* =========================================================
+   MAIN
+========================================================= */
+
+Deno.serve(
+    async req => {
+
+        try {
+
+        /* CORS */
+
+        if (
+            req.method ===
+            "OPTIONS"
+        ) {
+
+            return new Response(
+                "ok",
+                {
+                    headers: cors
+                }
+            );
+        }
+
+
+        /* AUTH */
+
+        const user =
+            await userFrom(
+                req
+            );
+
+
+        if (!user) {
+
+                   return json({
+            success: true,
+
+            provider,
+
+            agent,
+
+            website:
+                websiteUrl,
+
+            audit_id:
+                auditRecord?.id ||
+                null,
+
+            score,
+
+            crawl: {
+
+                homepage_status:
+                    crawl.homepage.status,
+
+                response_time_ms:
+                    crawl.homepage.response_time_ms,
+
+                title:
+                    pageAnalysis
+                        ?.title
+                        ?.value ||
+                    null,
+
+                meta_description:
+                    pageAnalysis
+                        ?.meta_description
+                        ?.value ||
+                    null,
+
+                h1_count:
+                    pageAnalysis
+                        ?.headings
+                        ?.h1 ||
+                    0,
+
+                images_missing_alt:
+                    pageAnalysis
+                        ?.images
+                        ?.missing_alt ||
+                    0,
+
+                robots_exists:
+                    crawl.robots.exists,
+
+                sitemap_exists:
+                    crawl.sitemap.exists
+
+            },
+
+            audit:
+                auditJson,
+
+            raw_ai_result:
+                aiResult
+
+        });
+
+        } catch (error) {
+
+            console.error(
+                "UNHANDLED AI ORCHESTRATOR ERROR:",
+                error
+            );
+
+            return json(
+                {
+                    error:
+                        "AI orchestrator internal error.",
+
+                    details:
+                        error instanceof Error
+                            ? error.message
+                            : String(error)
+                },
+                500
+            );
+        }
+
+    }
+);
+
+       /* =========================================================
+   AUTHENTICATED SUPABASE CLIENT
+========================================================= */
+
+const sb =
+    userClient(req);
+
+if (!sb) {
+
+    return json(
+        {
+            error:
+                "Unauthorized"
+        },
+        401
+    );
+}
+
+        /* REQUEST */
+
+        let body: any;
+
+
+        try {
+
+            body =
+                await req.json();
+
+        } catch {
+
+            return json(
+                {
+                    error:
+                        "Invalid JSON request."
+                },
+                400
+            );
+        }
+
+
+        const provider =
+            body.provider ||
+            "openai";
+
+        const agent =
+            body.agent ||
+            "seo_auditor";
+
+
+        /* SUBSCRIPTION */
+
+        const {
+            data:
+                entitlement,
+
+            error:
+                entitlementError
+
+        } =
+            await sb.rpc(
+                "current_entitlement"
+            );
+
+
+        if (entitlementError) {
+
+            console.error(
+                entitlementError
+            );
+
+            return json(
+                {
+                    error:
+                        "Could not verify subscription.",
+
+                    details:
+                        entitlementError.message
+
+                },
+                500
+            );
+        }
+
+
+        const ent =
+            entitlement?.[0];
+
+
+        if (
+            !ent ||
+
+            ![
+                "trial",
+                "active"
+            ].includes(
+                ent.status
+            ) ||
+
+            (
+                ent.ends_at &&
+                new Date(
+                    ent.ends_at
+                ) <= new Date()
+            )
+        ) {
+
+            return json(
+                {
+                    error:
+                        "subscription_paused"
+                },
+                402
+            );
+        }
+
+
+        /* WEBSITE */
+
+        let websiteUrl =
+            body.context?.url ||
+            body.url;
+
+
+        if (!websiteUrl) {
+
+            return json(
+                {
+                    error:
+                        "Website URL is required."
+                },
+                400
+            );
+        }
+
+
+        try {
+
+            websiteUrl =
+                cleanUrl(
+                    websiteUrl
+                );
+
+        } catch {
+
+            return json(
+                {
+                    error:
+                        "Invalid website URL."
+                },
+                400
+            );
+        }
+
+
+        /* CRAWL */
+
+        console.log(
+            "Starting crawl:",
+            websiteUrl
+        );
+
+
+        const started =
+            Date.now();
+
+
+        let crawl;
+
+
+        try {
+
+            crawl =
+                await crawlWebsite(
+                    websiteUrl
+                );
+
+        } catch (error) {
+
+            console.error(
+                error
+            );
+
+            return json(
+                {
+                    error:
+                        "Website crawl failed.",
+
+                    details:
+                        error instanceof Error
+                            ? error.message
+                            : String(error)
+
+                },
+                502
+            );
+        }
+
+
+        /* =================================================
+           SAVE CRAWL PAGE
+        ================================================= */
+
+        const page =
+            crawl.homepage;
+
+
+        const pageAnalysis =
+            page.analysis;
+
+
+        if (
+            page.fetched &&
+            pageAnalysis
+        ) {
+
+            const {
+                error:
+                    crawlInsertError
+            } =
+                await sb
+                    .from(
+                        "crawl_pages"
+                    )
+                    .insert({
+
+                        website_id:
+                            body.website_id,
+
+                        url:
+                            crawl.website.final_url,
+
+                        status_code:
+                            page.status,
+
+                        title:
+                            pageAnalysis
+                                .title
+                                ?.value ||
+                            null,
+
+                        meta_description:
+                            pageAnalysis
+                                .meta_description
+                                ?.value ||
+                            null,
+
+                        canonical_url:
+                            pageAnalysis
+                                .canonical
+                                ?.value ||
+                            null,
+
+                        word_count:
+                            pageAnalysis
+                                .content
+                                ?.word_count ||
+                            0,
+
+                        h1_count:
+                            pageAnalysis
+                                .headings
+                                ?.h1 ||
+                            0,
+
+                        image_count:
+                            pageAnalysis
+                                .images
+                                ?.total ||
+                            0,
+
+                        internal_link_count:
+                            pageAnalysis
+                                .links
+                                ?.total ||
+                            0,
+
+                        load_ms:
+                            page.response_time_ms,
+
+                        noindex:
+                            pageAnalysis
+                                .technical
+                                ?.noindex ||
+                            false,
+
+                        raw_signals: {
+
+                            h2_count:
+                                pageAnalysis
+                                    .headings
+                                    ?.h2 ||
+                                0,
+
+                            h3_count:
+                                pageAnalysis
+                                    .headings
+                                    ?.h3 ||
+                                0,
+
+                            missing_alt:
+                                pageAnalysis
+                                    .images
+                                    ?.missing_alt ||
+                                0,
+
+                            https:
+                                pageAnalysis
+                                    .technical
+                                    ?.https ||
+                                false,
+
+                            viewport:
+                                pageAnalysis
+                                    .technical
+                                    ?.viewport ||
+                                false,
+
+                            charset:
+                                pageAnalysis
+                                    .technical
+                                    ?.charset ||
+                                false,
+
+                            structured_data_blocks:
+                                pageAnalysis
+                                    .technical
+                                    ?.structured_data_blocks ||
+                                0,
+
+                            robots_exists:
+                                crawl.robots
+                                    .exists,
+
+                            sitemap_exists:
+                                crawl.sitemap
+                                    .exists
+                        },
+
+                        crawled_at:
+                            new Date()
+                                .toISOString()
+
+                    });
+
+
+            if (crawlInsertError) {
+
+                console.error(
+                    "crawl_pages insert error:",
+                    crawlInsertError
+                );
+            }
+        }
+
+
+        /* =================================================
+           AI PROMPT
+        ================================================= */
+
+        const task =
+            body.task ||
+            "Perform a technical SEO audit.";
+
+
+        const prompt = `
+
+You are an Obsedian.Space SEO auditor.
+
+Analyze ONLY the evidence provided below.
+
+Never invent:
+- traffic
+- rankings
+- conversions
+- backlinks
+- Google Search Console data
+- Google Analytics data
+- Core Web Vitals
+- indexed pages
+
+If information is unavailable, explicitly say:
+"Not available from this crawl."
+
+Return VALID JSON ONLY.
+
+Use this structure:
+
+{
+  "summary": {
+    "overall_observations": [],
+    "critical_issues": [],
+    "warnings": [],
+    "positive_signals": []
+  },
+
+  "technical_seo": [
+    {
+      "issue": "",
+      "severity": "critical|high|medium|low|info",
+      "evidence": "",
+      "recommendation": ""
+    }
+  ],
+
+  "on_page_seo": [
+    {
+      "issue": "",
+      "severity": "critical|high|medium|low|info",
+      "evidence": "",
+      "recommendation": ""
+    }
+  ],
+
+  "content": [
+    {
+      "issue": "",
+      "severity": "critical|high|medium|low|info",
+      "evidence": "",
+      "recommendation": ""
+    }
+  ],
+
+  "prioritized_actions": [
+    {
+      "priority": 1,
+      "action": "",
+      "reason": ""
+    }
+  ]
+}
+
 Task:
-${body.task||""}`;
- const started=Date.now(); let result:any;
- if(provider==="claude")result=await claude(prompt);
- else if(provider==="gemini")result=await gemini(prompt);
- else if(provider==="perplexity")result=await perplexity(prompt);
- else result=await openai(prompt);
- await sb.from("ai_runs").insert({user_id:user.id,website_id:body.website_id||null,agent:body.agent||"general",provider,status:"completed",latency_ms:Date.now()-started,result});
- await sb.from("usage_events").insert({user_id:user.id,event_type:"ai_run",provider,units:1,metadata:{agent:body.agent}});
- return json({provider,result});
-});
+
+${task}
+
+Website evidence:
+
+${JSON.stringify(
+    crawl,
+    null,
+    2
+)}
+
+`;
+
+
+        /* =================================================
+           OPENAI
+        ================================================= */
+
+        let aiResult: any;
+
+
+        try {
+
+            if (
+                provider !==
+                "openai"
+            ) {
+
+                return json(
+                    {
+                        error:
+                            "Only OpenAI is currently enabled."
+                    },
+                    400
+                );
+            }
+
+
+            aiResult =
+                await openai(
+                    prompt
+                );
+
+        } catch (error) {
+
+            console.error(
+                "OpenAI error:",
+                error
+            );
+
+            return json(
+                {
+                    error:
+                        "AI provider request failed.",
+
+                    details:
+                        error instanceof Error
+                            ? error.message
+                            : String(error)
+
+                },
+                502
+            );
+        }
+
+
+        /* =================================================
+           EXTRACT RESULT
+        ================================================= */
+
+        const outputText =
+            extractOpenAIText(
+                aiResult
+            );
+
+
+        let auditJson: any = null;
+
+
+        try {
+
+            auditJson =
+                JSON.parse(
+                    outputText
+                );
+
+        } catch {
+
+            auditJson = {
+
+                summary: {
+
+                    overall_observations:
+                        [
+                            outputText
+                        ],
+
+                    critical_issues: [],
+
+                    warnings: [],
+
+                    positive_signals: []
+
+                },
+
+                technical_seo: [],
+
+                on_page_seo: [],
+
+                content: [],
+
+                prioritized_actions: []
+
+            };
+        }
+
+
+        /* =================================================
+           CALCULATE SCORE
+        ================================================= */
+
+        let score = 100;
+
+
+        const criticalCount =
+            (
+                auditJson
+                    ?.summary
+                    ?.critical_issues ||
+                []
+            ).length;
+
+
+        const warningCount =
+            (
+                auditJson
+                    ?.summary
+                    ?.warnings ||
+                []
+            ).length;
+
+
+        score -=
+            criticalCount *
+            15;
+
+
+        score -=
+            warningCount *
+            5;
+
+
+        score =
+            Math.max(
+                0,
+                Math.min(
+                    100,
+                    score
+                )
+            );
+
+
+        /* =================================================
+           SAVE AUDIT
+        ================================================= */
+
+        const {
+            data:
+                auditRecord,
+
+            error:
+                auditError
+
+        } =
+            await sb
+                .from(
+                    "audits"
+                )
+                .insert({
+
+                    website_id:
+                        body.website_id,
+
+                    user_id:
+                        user.id,
+
+                    score,
+
+                    technical:
+                        auditJson
+                            .technical_seo ||
+                        [],
+
+                    seo:
+                        auditJson
+                            .on_page_seo ||
+                        [],
+
+                    content:
+                        auditJson
+                            .content ||
+                        [],
+
+                    performance:
+                        {
+
+                            response_time_ms:
+                                page.response_time_ms,
+
+                            https:
+                                pageAnalysis
+                                    ?.technical
+                                    ?.https ||
+                                false
+
+                        },
+
+                    research:
+                        {},
+
+                    evidence:
+                        {
+
+                            crawl,
+
+                            source:
+                                "website_crawler",
+
+                            generated_at:
+                                new Date()
+                                    .toISOString()
+
+                        }
+
+                })
+                .select()
+                .single();
+
+
+        if (auditError) {
+
+            console.error(
+                "audits insert error:",
+                auditError
+            );
+        }
+
+
+        /* =================================================
+           SAVE RECOMMENDATIONS
+        ================================================= */
+
+        const recommendations =
+            Array.isArray(
+                auditJson
+                    ?.prioritized_actions
+            )
+                ? auditJson
+                    .prioritized_actions
+                : [];
+
+
+        for (
+            const item
+            of recommendations
+        ) {
+
+            const title =
+                item.action ||
+                "SEO improvement";
+
+
+            const description =
+                item.reason ||
+                "";
+
+
+            const priorityNumber =
+                Number(
+                    item.priority ||
+                    5
+                );
+
+
+            let priority =
+                "medium";
+
+
+            if (
+                priorityNumber <= 1
+            ) {
+
+                priority =
+                    "critical";
+
+            } else if (
+                priorityNumber <= 2
+            ) {
+
+                priority =
+                    "high";
+
+            } else if (
+                priorityNumber <= 4
+            ) {
+
+                priority =
+                    "medium";
+
+            } else {
+
+                priority =
+                    "low";
+            }
+
+
+            const {
+                error:
+                    recommendationError
+            } =
+                await sb
+                    .from(
+                        "recommendations"
+                    )
+                    .insert({
+
+                        website_id:
+                            body.website_id,
+
+                        user_id:
+                            user.id,
+
+                        category:
+                            "SEO",
+
+                        title,
+
+                        description,
+
+                        priority,
+
+                        impact:
+                            priority ===
+                            "critical"
+                                ? "high"
+                                : priority ===
+                                  "high"
+                                    ? "high"
+                                    : "medium",
+
+                        effort:
+                            "medium",
+
+                        evidence:
+                            {
+
+                                crawl_url:
+                                    websiteUrl,
+
+                                reason:
+                                    description
+
+                            },
+
+                        status:
+                            "open"
+
+                    });
+
+
+            if (
+                recommendationError
+            ) {
+
+                console.error(
+                    "recommendation insert error:",
+                    recommendationError
+                );
+            }
+        }
+
+
+        /* =================================================
+           SAVE AI RUN
+        ================================================= */
+
+        const latency =
+            Date.now() -
+            started;
+
+
+        const {
+            error:
+                aiRunError
+        } =
+            await sb
+                .from(
+                    "ai_runs"
+                )
+                .insert({
+
+                    user_id:
+                        user.id,
+
+                    website_id:
+                        body.website_id ||
+                        null,
+
+                    agent,
+
+                    provider,
+
+                    model:
+                        "gpt-5-mini",
+
+                    status:
+                        "completed",
+
+                    input_tokens:
+                        aiResult
+                            ?.usage
+                            ?.input_tokens ||
+                        0,
+
+                    output_tokens:
+                        aiResult
+                            ?.usage
+                            ?.output_tokens ||
+                        0,
+
+                    estimated_cost:
+                        0,
+
+                    latency_ms:
+                        latency,
+
+                    result:
+                        aiResult
+
+                });
+
+
+        if (aiRunError) {
+
+            console.error(
+                "ai_runs insert error:",
+                aiRunError
+            );
+        }
+
+
+        /* =================================================
+           USAGE EVENT
+        ================================================= */
+
+        const {
+            error:
+                usageError
+        } =
+            await sb
+                .from(
+                    "usage_events"
+                )
+                .insert({
+
+                    user_id:
+                        user.id,
+
+                    event_type:
+                        "ai_run",
+
+                    provider,
+
+                    units:
+                        1,
+
+                    metadata: {
+
+                        agent,
+
+                        website_id:
+                            body.website_id ||
+                            null,
+
+                        audit_id:
+                            auditRecord
+                                ?.id ||
+                            null
+
+                    }
+
+                });
+
+
+        if (usageError) {
+
+            console.error(
+                "usage_events insert error:",
+                usageError
+            );
+        }
+
+
+        /* =================================================
+           FINAL RESPONSE
+        ================================================= */
+
+        return json({
+
+            success:
+                true,
+
+            provider,
+
+            agent,
+
+            website:
+                websiteUrl,
+
+            audit_id:
+                auditRecord
+                    ?.id ||
+                null,
+
+            score,
+
+            crawl: {
+
+                homepage_status:
+                    crawl.homepage
+                        .status,
+
+                response_time_ms:
+                    crawl.homepage
+                        .response_time_ms,
+
+                title:
+                    pageAnalysis
+                        ?.title
+                        ?.value ||
+                    null,
+
+                meta_description:
+                    pageAnalysis
+                        ?.meta_description
+                        ?.value ||
+                    null,
+
+                h1_count:
+                    pageAnalysis
+                        ?.headings
+                        ?.h1 ||
+                    0,
+
+                images_missing_alt:
+                    pageAnalysis
+                        ?.images
+                        ?.missing_alt ||
+                    0,
+
+                robots_exists:
+                    crawl.robots
+                        .exists,
+
+                sitemap_exists:
+                    crawl.sitemap
+                        .exists
+
+            },
+
+            audit:
+                auditJson,
+
+            raw_ai_result:
+                aiResult
+
+        });
+
+    }
+);

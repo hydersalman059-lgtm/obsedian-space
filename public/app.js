@@ -453,94 +453,164 @@ $("add").onclick = async () => {
 ========================= */
 
 async function agent(
-    agentName,
+    agent,
     task,
     provider = "openai"
 ) {
 
-    if (!session) {
-        alert("Please sign in first.");
-        return;
-    }
-
     if (!currentSites[0]) {
-        alert("Add a website first.");
+        alert("Add a website first");
         return;
     }
-
 
     $("out").textContent =
         "AI agent running…";
 
-
     try {
 
         const {
-            data: { session: currentSession }
-        } = await sb.auth.getSession();
-
+            data: {
+                session: currentSession
+            }
+        } =
+            await sb.auth.getSession();
 
         if (!currentSession) {
 
             $("out").textContent =
-                "Your session has expired. Please sign in again.";
+                JSON.stringify(
+                    {
+                        error:
+                            "You are not logged in."
+                    },
+                    null,
+                    2
+                );
 
             return;
         }
 
 
-        const response = await fetch(
-            "/api/ai",
-            {
-                method: "POST",
+        const response =
+            await fetch(
+                "/api/ai",
+                {
+                    method:
+                        "POST",
 
-                headers: {
-                    Authorization:
-                        `Bearer ${currentSession.access_token}`,
+                    headers: {
 
-                    "Content-Type":
-                        "application/json"
-                },
+                        "Authorization":
+                            `Bearer ${currentSession.access_token}`,
 
-                body: JSON.stringify({
-                    agent: agentName,
-                    task,
-                    provider,
-                    website_id: currentSites[0].id,
+                        "Content-Type":
+                            "application/json"
 
-                    context: {
-                        url: currentSites[0].url
-                    }
-                })
-            }
-        );
+                    },
+
+                    body:
+                        JSON.stringify({
+
+                            agent,
+
+                            task,
+
+                            provider,
+
+                            website_id:
+                                currentSites[0].id,
+
+                            context: {
+
+                                url:
+                                    currentSites[0].url
+
+                            }
+
+                        })
+                }
+            );
 
 
-        const result = await response.json();
+        /*
+         * IMPORTANT:
+         * Read as TEXT first.
+         *
+         * If Cloudflare/Supabase returns
+         * "Internal Server Error",
+         * response.json() would hide the
+         * real response behind a JSON
+         * parsing error.
+         */
+
+        const responseText =
+            await response.text();
+
+
+        let data;
+
+        try {
+
+            data =
+                JSON.parse(
+                    responseText
+                );
+
+        } catch {
+
+            data = {
+
+                error:
+                    "Server returned a non-JSON response",
+
+                http_status:
+                    response.status,
+
+                status_text:
+                    response.statusText,
+
+                response:
+                    responseText
+
+            };
+        }
 
 
         $("out").textContent =
-            JSON.stringify(result, null, 2);
+            JSON.stringify(
+                data,
+                null,
+                2
+            );
 
 
-        await load();
+        if (response.ok) {
+            await load();
+        }
 
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            "AI request error:",
+            error
+        );
 
         $("out").textContent =
             JSON.stringify(
                 {
-                    error: error.message
+                    error:
+                        "AI request failed",
+
+                    details:
+                        error?.message ||
+                        String(error)
                 },
                 null,
                 2
             );
     }
 }
-
 
 /* =========================
    AI BUTTONS
