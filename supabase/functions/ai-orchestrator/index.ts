@@ -3,6 +3,10 @@ import {
     userClient
 } from "../_shared/auth.ts";
 
+import {
+    json,
+    cors
+} from "../_shared/cors.ts";
 
 /* =========================================================
    HELPERS
@@ -664,115 +668,149 @@ async function crawlWebsite(
 
 
 /* =========================================================
-   OPENAI
+   GEMINI — INTERACTIONS API
 ========================================================= */
 
-async function openai(
+async function gemini(
     prompt: string
 ) {
 
     const apiKey =
         Deno.env.get(
-            "OPENAI_API_KEY"
+            "GEMINI_API_KEY"
         );
 
-
     if (!apiKey) {
-
         throw new Error(
-            "OPENAI_API_KEY is not configured."
+            "GEMINI_API_KEY is not configured."
         );
     }
 
+    const model =
+        "gemini-3.6-flash";
+
+    const endpoint =
+        "https://generativelanguage.googleapis.com/v1beta/interactions";
 
     const response =
         await fetch(
-            "https://api.openai.com/v1/responses",
+            endpoint,
             {
                 method: "POST",
 
                 headers: {
-
-                    "Authorization":
-                        `Bearer ${apiKey}`,
-
                     "Content-Type":
-                        "application/json"
-
+                        "application/json",
+                    "x-goog-api-key":
+                        apiKey
                 },
 
                 body:
                     JSON.stringify({
-
-                        model:
-                            "gpt-5-mini",
-
-                        input:
-                            prompt
-
+                        model,
+                        input: prompt
                     })
-
             }
         );
 
+    const raw =
+        await response.text();
 
-    const data =
-        await response.json();
+    let data: any = null;
 
+    try {
+        data =
+            raw
+                ? JSON.parse(raw)
+                : null;
+    } catch {
+        data = null;
+    }
 
     if (!response.ok) {
-
         throw new Error(
             data?.error?.message ||
-            `OpenAI request failed with HTTP ${response.status}`
+            data?.message ||
+            `Gemini Interactions request failed with HTTP ${response.status}`
         );
     }
 
+    if (
+        data?.status &&
+        data.status !== "completed"
+    ) {
+        throw new Error(
+            `Gemini interaction status: ${data.status}`
+        );
+    }
 
     return data;
 }
 
 
 /* =========================================================
-   OPENAI TEXT
+   GEMINI TEXT
 ========================================================= */
 
-function extractOpenAIText(
+function extractGeminiText(
     result: any
 ): string {
 
+    /* Current Interactions API convenience/raw response */
     if (
         typeof result?.output_text ===
         "string"
     ) {
-
         return result.output_text;
     }
 
-
     if (
         Array.isArray(
-            result?.output
+            result?.outputs
+        )
+    ) {
+
+        const outputParts =
+            result.outputs
+                .map(
+                    (item: any) =>
+                        typeof item?.text === "string"
+                            ? item.text
+                            : ""
+                )
+                .filter(
+                    (value: string) =>
+                        value.length > 0
+                );
+
+        if (outputParts.length) {
+            return outputParts.join("\n");
+        }
+    }
+
+    /* Raw Interaction timeline response */
+    if (
+        Array.isArray(
+            result?.steps
         )
     ) {
 
         const parts: string[] = [];
 
-
         for (
-            const item
-            of result.output
+            const step
+            of result.steps
         ) {
 
             if (
                 Array.isArray(
-                    item?.content
+                    step?.content
                 )
             ) {
 
                 for (
                     const content
-                    of item.content
+                    of step.content
                 ) {
 
                     if (
@@ -788,15 +826,10 @@ function extractOpenAIText(
             }
         }
 
-
         if (parts.length) {
-
-            return parts.join(
-                "\n"
-            );
+            return parts.join("\n");
         }
     }
-
 
     return JSON.stringify(
         result
@@ -811,15 +844,12 @@ function extractOpenAIText(
 Deno.serve(
     async req => {
 
-        try {
-
         /* CORS */
 
         if (
             req.method ===
             "OPTIONS"
         ) {
-
             return new Response(
                 "ok",
                 {
@@ -828,7 +858,6 @@ Deno.serve(
             );
         }
 
-
         /* AUTH */
 
         const user =
@@ -836,114 +865,32 @@ Deno.serve(
                 req
             );
 
-
         if (!user) {
-
-                   return json({
-            success: true,
-
-            provider,
-
-            agent,
-
-            website:
-                websiteUrl,
-
-            audit_id:
-                auditRecord?.id ||
-                null,
-
-            score,
-
-            crawl: {
-
-                homepage_status:
-                    crawl.homepage.status,
-
-                response_time_ms:
-                    crawl.homepage.response_time_ms,
-
-                title:
-                    pageAnalysis
-                        ?.title
-                        ?.value ||
-                    null,
-
-                meta_description:
-                    pageAnalysis
-                        ?.meta_description
-                        ?.value ||
-                    null,
-
-                h1_count:
-                    pageAnalysis
-                        ?.headings
-                        ?.h1 ||
-                    0,
-
-                images_missing_alt:
-                    pageAnalysis
-                        ?.images
-                        ?.missing_alt ||
-                    0,
-
-                robots_exists:
-                    crawl.robots.exists,
-
-                sitemap_exists:
-                    crawl.sitemap.exists
-
-            },
-
-            audit:
-                auditJson,
-
-            raw_ai_result:
-                aiResult
-
-        });
-
-        } catch (error) {
-
-            console.error(
-                "UNHANDLED AI ORCHESTRATOR ERROR:",
-                error
+            return json(
+                {
+                    error:
+                        "Unauthorized"
+                },
+                401
             );
+        }
+        /* =========================================================
+           AUTHENTICATED SUPABASE CLIENT
+        ========================================================= */
+
+        const sb =
+            userClient(req);
+
+        if (!sb) {
 
             return json(
                 {
                     error:
-                        "AI orchestrator internal error.",
-
-                    details:
-                        error instanceof Error
-                            ? error.message
-                            : String(error)
+                        "Unauthorized"
                 },
-                500
+                401
             );
         }
-
-    }
-);
-
-       /* =========================================================
-   AUTHENTICATED SUPABASE CLIENT
-========================================================= */
-
-const sb =
-    userClient(req);
-
-if (!sb) {
-
-    return json(
-        {
-            error:
-                "Unauthorized"
-        },
-        401
-    );
-}
 
         /* REQUEST */
 
@@ -969,7 +916,7 @@ if (!sb) {
 
         const provider =
             body.provider ||
-            "openai";
+            "gemini";
 
         const agent =
             body.agent ||
@@ -1384,13 +1331,13 @@ ${JSON.stringify(
 
             if (
                 provider !==
-                "openai"
+                "gemini"
             ) {
 
                 return json(
                     {
                         error:
-                            "Only OpenAI is currently enabled."
+                            "Only Gemini is currently enabled."
                     },
                     400
                 );
@@ -1398,7 +1345,7 @@ ${JSON.stringify(
 
 
             aiResult =
-                await openai(
+                await gemini(
                     prompt
                 );
 
@@ -1430,50 +1377,17 @@ ${JSON.stringify(
         ================================================= */
 
         const outputText =
-            extractOpenAIText(
+            extractGeminiText(
                 aiResult
             );
 
 
-        let auditJson: any = null;
-
-
-        try {
-
-            auditJson =
-                JSON.parse(
+        const auditJson =
+            normalizeAuditShape(
+                normalizeAuditJson(
                     outputText
-                );
-
-        } catch {
-
-            auditJson = {
-
-                summary: {
-
-                    overall_observations:
-                        [
-                            outputText
-                        ],
-
-                    critical_issues: [],
-
-                    warnings: [],
-
-                    positive_signals: []
-
-                },
-
-                technical_seo: [],
-
-                on_page_seo: [],
-
-                content: [],
-
-                prioritized_actions: []
-
-            };
-        }
+                )
+            );
 
 
         /* =================================================
@@ -1501,6 +1415,39 @@ ${JSON.stringify(
             ).length;
 
 
+        const highCount =
+            [
+                ...(Array.isArray(
+                    auditJson
+                        ?.technical_seo
+                )
+                    ? auditJson
+                        .technical_seo
+                    : []),
+
+                ...(Array.isArray(
+                    auditJson
+                        ?.on_page_seo
+                )
+                    ? auditJson
+                        .on_page_seo
+                    : []),
+
+                ...(Array.isArray(
+                    auditJson
+                        ?.content
+                )
+                    ? auditJson
+                        .content
+                    : [])
+            ]
+                .filter(
+                    (item: any) =>
+                        item?.severity ===
+                        "high"
+                ).length;
+
+
         score -=
             criticalCount *
             15;
@@ -1508,6 +1455,14 @@ ${JSON.stringify(
 
         score -=
             warningCount *
+            5;
+
+
+        // High-severity issues that were not
+        // duplicated in summary.critical_issues
+        // still affect the audit score.
+        score -=
+            highCount *
             5;
 
 
@@ -1525,87 +1480,73 @@ ${JSON.stringify(
            SAVE AUDIT
         ================================================= */
 
-        const {
-            data:
-                auditRecord,
+       const auditId = crypto.randomUUID();
 
+const { error: auditError } =
+    await sb
+        .from("audits")
+        .insert({
+            id: auditId,
+
+            website_id:
+                body.website_id,
+
+            user_id:
+                user.id,
+
+            score,
+
+            technical:
+                auditJson.technical_seo || [],
+
+            seo:
+                auditJson.on_page_seo || [],
+
+            content:
+                auditJson.content || [],
+
+            performance: {
+                response_time_ms:
+                    page.response_time_ms,
+
+                https:
+                    pageAnalysis
+                        ?.technical
+                        ?.https || false
+            },
+
+            research: {},
+
+            evidence: {
+                crawl,
+
+                source:
+                    "website_crawler",
+
+                generated_at:
+                    new Date().toISOString()
+            }
+        });
+
+if (auditError) {
+    console.error(
+        "audits insert error:",
+        auditError
+    );
+
+    return json(
+        {
             error:
-                auditError
+                "Audit could not be saved.",
 
-        } =
-            await sb
-                .from(
-                    "audits"
-                )
-                .insert({
+            details:
+                auditError.message
+        },
+        500
+    );
+}
 
-                    website_id:
-                        body.website_id,
-
-                    user_id:
-                        user.id,
-
-                    score,
-
-                    technical:
-                        auditJson
-                            .technical_seo ||
-                        [],
-
-                    seo:
-                        auditJson
-                            .on_page_seo ||
-                        [],
-
-                    content:
-                        auditJson
-                            .content ||
-                        [],
-
-                    performance:
-                        {
-
-                            response_time_ms:
-                                page.response_time_ms,
-
-                            https:
-                                pageAnalysis
-                                    ?.technical
-                                    ?.https ||
-                                false
-
-                        },
-
-                    research:
-                        {},
-
-                    evidence:
-                        {
-
-                            crawl,
-
-                            source:
-                                "website_crawler",
-
-                            generated_at:
-                                new Date()
-                                    .toISOString()
-
-                        }
-
-                })
-                .select()
-                .single();
-
-
-        if (auditError) {
-
-            console.error(
-                "audits insert error:",
-                auditError
-            );
-        }
-
+                   
 
         /* =================================================
            SAVE RECOMMENDATIONS
@@ -1772,7 +1713,7 @@ ${JSON.stringify(
                     provider,
 
                     model:
-                        "gpt-5-mini",
+                        "gemini-3.6-flash",
 
                     status:
                         "completed",
