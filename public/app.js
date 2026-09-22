@@ -89,6 +89,60 @@ async function oauth(provider) {
 $("google").onclick = () => oauth("google");
 $("github").onclick = () => oauth("github");
 
+/* =========================
+   EMAIL + PASSWORD LOGIN
+========================= */
+
+$("passwordBtn").onclick = async () => {
+
+    const email = $("email").value.trim();
+    const password = $("password").value;
+
+    if (!email) {
+        $("msg").textContent =
+            "Please enter your email.";
+        return;
+    }
+
+    if (!password) {
+        $("msg").textContent =
+            "Please enter your password.";
+        return;
+    }
+
+    $("passwordBtn").disabled = true;
+    $("msg").textContent =
+        "Signing in...";
+
+    const { data, error } =
+        await sb.auth.signInWithPassword({
+            email,
+            password
+        });
+
+    $("passwordBtn").disabled = false;
+
+    if (error) {
+
+        console.error(
+            "Password login error:",
+            error
+        );
+
+        $("msg").textContent =
+            error.message;
+
+        return;
+    }
+
+    session = data.session;
+
+    $("msg").textContent =
+        "Signed in successfully.";
+
+    paint();
+};
+
 
 /* =========================
    EMAIL MAGIC LINK

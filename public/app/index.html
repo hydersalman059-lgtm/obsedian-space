@@ -1,1 +1,255 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Obsedian.Space Dashboard</title><link rel="stylesheet" href="/app.css"></head><body><header><a class="logo" href="/">OBSEDIAN<span>.SPACE</span></a><button id="logout">Logout</button></header><main><section id="login" class="card"><h1>Welcome back</h1><p>Email, phone OTP, Google or GitHub.</p><input id="email" placeholder="Email"><button id="emailBtn">Send email link</button><div class="split"><button id="google">Google</button><button id="github">GitHub</button></div><input id="phone" placeholder="+91XXXXXXXXXX"><button id="phoneBtn">Send phone OTP</button><p id="msg"></p></section><section id="dash" class="hidden"><div class="top"><div><small>WORKSPACE</small><h1 id="hello">Dashboard</h1></div><span id="badge"></span></div><div class="stats" id="stats"></div><div class="grid"><section class="card"><h2>Websites</h2><input id="url" placeholder="https://example.com"><input id="name" placeholder="Website name"><button id="add">Add website</button><div id="sites"></div></section><section class="card"><h2>AI Operations</h2><button id="audit">Run AI audit</button><button id="strategy">Generate SEO strategy</button><button id="report">Generate weekly report</button><pre id="out"></pre></section></div><section class="card"><h2>Approval Queue</h2><div id="approvals"></div></section><section class="card"><h2>Plan & Billing</h2><div id="billing"></div><button data-plan="growth">Growth</button><button data-plan="scale">Scale</button></section><section class="card"><h2>Support</h2><input id="subject" placeholder="Subject"><textarea id="support"></textarea><button id="ticket">Create support ticket</button></section></section></main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="/app-config.js"></script><script src="/app.js"></script></body></html>
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>Obsedian.Space Dashboard</title>
+
+    <link rel="stylesheet" href="/app.css">
+</head>
+
+<body>
+
+<header>
+    <a class="logo" href="/">
+        OBSEDIAN<span>.SPACE</span>
+    </a>
+
+    <button id="logout">Logout</button>
+</header>
+
+
+<main>
+
+    <!-- LOGIN -->
+    <section id="login" class="card">
+
+        <h1>Welcome back</h1>
+
+        <p>
+            Sign in using email/password, magic link,
+            Google, GitHub or phone OTP.
+        </p>
+
+
+        <!-- EMAIL + PASSWORD -->
+
+        <h2>Email & Password</h2>
+
+        <input
+            id="email"
+            type="email"
+            placeholder="Email"
+            autocomplete="email"
+        >
+
+        <input
+            id="password"
+            type="password"
+            placeholder="Password"
+            autocomplete="current-password"
+        >
+
+        <button id="passwordBtn">
+            Sign in
+        </button>
+
+
+        <!-- MAGIC LINK -->
+
+        <button id="emailBtn">
+            Send email link
+        </button>
+
+
+        <div class="split">
+
+            <button id="google">
+                Google
+            </button>
+
+            <button id="github">
+                GitHub
+            </button>
+
+        </div>
+
+
+        <!-- PHONE -->
+
+        <input
+            id="phone"
+            type="tel"
+            placeholder="+91XXXXXXXXXX"
+            autocomplete="tel"
+        >
+
+        <button id="phoneBtn">
+            Send phone OTP
+        </button>
+
+
+        <p id="msg"></p>
+
+    </section>
+
+
+    <!-- DASHBOARD -->
+
+    <section id="dash" class="hidden">
+
+        <div class="top">
+
+            <div>
+
+                <small>
+                    WORKSPACE
+                </small>
+
+                <h1 id="hello">
+                    Dashboard
+                </h1>
+
+            </div>
+
+            <span id="badge"></span>
+
+        </div>
+
+
+        <!-- STATS -->
+
+        <div
+            class="stats"
+            id="stats">
+        </div>
+
+
+        <div class="grid">
+
+
+            <!-- WEBSITES -->
+
+            <section class="card">
+
+                <h2>
+                    Websites
+                </h2>
+
+                <input
+                    id="url"
+                    placeholder="https://example.com"
+                >
+
+                <input
+                    id="name"
+                    placeholder="Website name"
+                >
+
+                <button id="add">
+                    Add website
+                </button>
+
+                <div id="sites"></div>
+
+            </section>
+
+
+            <!-- AI -->
+
+            <section class="card">
+
+                <h2>
+                    AI Operations
+                </h2>
+
+                <button id="audit">
+                    Run AI audit
+                </button>
+
+                <button id="strategy">
+                    Generate SEO strategy
+                </button>
+
+                <button id="report">
+                    Generate weekly report
+                </button>
+
+                <pre id="out"></pre>
+
+            </section>
+
+        </div>
+
+
+        <!-- APPROVALS -->
+
+        <section class="card">
+
+            <h2>
+                Approval Queue
+            </h2>
+
+            <div id="approvals"></div>
+
+        </section>
+
+
+        <!-- BILLING -->
+
+        <section class="card">
+
+            <h2>
+                Plan & Billing
+            </h2>
+
+            <div id="billing"></div>
+
+            <button data-plan="growth">
+                Growth
+            </button>
+
+            <button data-plan="scale">
+                Scale
+            </button>
+
+        </section>
+
+
+        <!-- SUPPORT -->
+
+        <section class="card">
+
+            <h2>
+                Support
+            </h2>
+
+            <input
+                id="subject"
+                placeholder="Subject"
+            >
+
+            <textarea
+                id="support"
+                placeholder="Describe your issue"
+            ></textarea>
+
+            <button id="ticket">
+                Create support ticket
+            </button>
+
+        </section>
+
+    </section>
+
+</main>
+
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script src="/app-config.js"></script>
+
+<script src="/app.js"></script>
+
+</body>
+</html>
