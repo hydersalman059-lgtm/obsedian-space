@@ -1,255 +1,116 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width">
-    <title>Obsedian.Space Dashboard</title>
-
-    <link rel="stylesheet" href="/app.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Obsedian.Space Dashboard</title>
+<link rel="stylesheet" href="/app.css">
 </head>
-
 <body>
-
 <header>
-    <a class="logo" href="/">
-        OBSEDIAN<span>.SPACE</span>
-    </a>
-
-    <button id="logout">Logout</button>
+  <a class="logo" href="/">OBSEDIAN<span>.SPACE</span></a>
+  <button id="logout">Logout</button>
 </header>
 
-
 <main>
+  <section id="login" class="card">
+    <h1>Welcome back</h1>
+    <p>Email, password, magic link, phone OTP, Google or GitHub.</p>
 
-    <!-- LOGIN -->
-    <section id="login" class="card">
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button id="passwordBtn">Sign in</button>
+    <button id="emailBtn">Send email link</button>
 
-        <h1>Welcome back</h1>
+    <div class="split">
+      <button id="google">Google</button>
+      <button id="github">GitHub</button>
+    </div>
 
-        <p>
-            Sign in using email/password, magic link,
-            Google, GitHub or phone OTP.
-        </p>
+    <input id="phone" placeholder="+91XXXXXXXXXX">
+    <button id="phoneBtn">Send phone OTP</button>
+    <p id="msg"></p>
+  </section>
 
+  <section id="dash" class="hidden">
+    <div class="top">
+      <div>
+        <small>WORKSPACE</small>
+        <h1 id="hello">Dashboard</h1>
+      </div>
+      <span id="badge"></span>
+    </div>
 
-        <!-- EMAIL + PASSWORD -->
+    <div class="stats" id="stats"></div>
 
-        <h2>Email & Password</h2>
+    <div class="grid">
+      <section class="card">
+        <h2>Websites</h2>
+        <input id="url" placeholder="https://example.com">
+        <input id="name" placeholder="Website name">
+        <button id="add">Add website</button>
+        <div id="sites"></div>
+      </section>
 
-        <input
-            id="email"
-            type="email"
-            placeholder="Email"
-            autocomplete="email"
-        >
+      <section class="card">
+        <h2>AI Operations</h2>
+        <button id="audit">Run AI audit</button>
+        <button id="strategy">Generate SEO strategy</button>
+        <button id="report">Generate weekly report</button>
+        <pre id="out"></pre>
+      </section>
+    </div>
 
-        <input
-            id="password"
-            type="password"
-            placeholder="Password"
-            autocomplete="current-password"
-        >
-
-        <button id="passwordBtn">
-            Sign in
-        </button>
-
-
-        <!-- MAGIC LINK -->
-
-        <button id="emailBtn">
-            Send email link
-        </button>
-
-
-        <div class="split">
-
-            <button id="google">
-                Google
-            </button>
-
-            <button id="github">
-                GitHub
-            </button>
-
-        </div>
-
-
-        <!-- PHONE -->
-
-        <input
-            id="phone"
-            type="tel"
-            placeholder="+91XXXXXXXXXX"
-            autocomplete="tel"
-        >
-
-        <button id="phoneBtn">
-            Send phone OTP
-        </button>
-
-
-        <p id="msg"></p>
-
+    <section class="card">
+      <h2>Approval Queue</h2>
+      <div id="approvals"></div>
     </section>
 
-
-    <!-- DASHBOARD -->
-
-    <section id="dash" class="hidden">
-
-        <div class="top">
-
-            <div>
-
-                <small>
-                    WORKSPACE
-                </small>
-
-                <h1 id="hello">
-                    Dashboard
-                </h1>
-
-            </div>
-
-            <span id="badge"></span>
-
-        </div>
-
-
-        <!-- STATS -->
-
-        <div
-            class="stats"
-            id="stats">
-        </div>
-
-
-        <div class="grid">
-
-
-            <!-- WEBSITES -->
-
-            <section class="card">
-
-                <h2>
-                    Websites
-                </h2>
-
-                <input
-                    id="url"
-                    placeholder="https://example.com"
-                >
-
-                <input
-                    id="name"
-                    placeholder="Website name"
-                >
-
-                <button id="add">
-                    Add website
-                </button>
-
-                <div id="sites"></div>
-
-            </section>
-
-
-            <!-- AI -->
-
-            <section class="card">
-
-                <h2>
-                    AI Operations
-                </h2>
-
-                <button id="audit">
-                    Run AI audit
-                </button>
-
-                <button id="strategy">
-                    Generate SEO strategy
-                </button>
-
-                <button id="report">
-                    Generate weekly report
-                </button>
-
-                <pre id="out"></pre>
-
-            </section>
-
-        </div>
-
-
-        <!-- APPROVALS -->
-
-        <section class="card">
-
-            <h2>
-                Approval Queue
-            </h2>
-
-            <div id="approvals"></div>
-
-        </section>
-
-
-        <!-- BILLING -->
-
-        <section class="card">
-
-            <h2>
-                Plan & Billing
-            </h2>
-
-            <div id="billing"></div>
-
-            <button data-plan="growth">
-                Growth
-            </button>
-
-            <button data-plan="scale">
-                Scale
-            </button>
-
-        </section>
-
-
-        <!-- SUPPORT -->
-
-        <section class="card">
-
-            <h2>
-                Support
-            </h2>
-
-            <input
-                id="subject"
-                placeholder="Subject"
-            >
-
-            <textarea
-                id="support"
-                placeholder="Describe your issue"
-            ></textarea>
-
-            <button id="ticket">
-                Create support ticket
-            </button>
-
-        </section>
-
+    <section class="card">
+      <h2>Plan &amp; Billing</h2>
+      <div id="billing"></div>
     </section>
 
+    <section class="card">
+      <h2>Support</h2>
+      <input id="subject" placeholder="Subject">
+      <textarea id="support" placeholder="How can we help?"></textarea>
+      <button id="ticket">Create support ticket</button>
+    </section>
+  </section>
 </main>
 
+<div id="upgradeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="upgradeTitle">
+  <div class="modal-card">
+    <button id="upgradeClose" class="modal-close" aria-label="Close">×</button>
+    <small>OBSEDIAN.SPACE</small>
+    <h2 id="upgradeTitle">Upgrade your plan</h2>
+    <p>Choose monthly or yearly billing. Your website limits increase immediately after a successful subscription.</p>
+
+    <div class="upgrade-grid">
+      <article class="upgrade-plan">
+        <span>GROWTH</span>
+        <h3>₹99 <small>/ month</small></h3>
+        <p>₹1,050 / year · up to 20 websites</p>
+        <button data-plan="growth" data-billing="monthly">Choose monthly</button>
+        <button data-plan="growth" data-billing="yearly" class="secondary">Choose yearly</button>
+      </article>
+
+      <article class="upgrade-plan featured">
+        <span>SCALE</span>
+        <h3>₹200 <small>/ month</small></h3>
+        <p>₹1,990 / year · up to 100 websites</p>
+        <button data-plan="scale" data-billing="monthly">Choose monthly</button>
+        <button data-plan="scale" data-billing="yearly" class="secondary">Choose yearly</button>
+      </article>
+    </div>
+
+    <small class="checkout-note">Payment checkout must be connected to Razorpay before production payments are accepted.</small>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <script src="/app-config.js"></script>
-
 <script src="/app.js"></script>
-
 </body>
 </html>
