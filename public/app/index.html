@@ -1,116 +1,125 @@
 <!doctype html>
+
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Obsedian.Space Dashboard</title>
-<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="../app.css">
 </head>
 <body>
 <header>
-  <a class="logo" href="/">OBSEDIAN<span>.SPACE</span></a>
-  <button id="logout">Logout</button>
+<a href="../" class="app-brand" aria-label="Obsedian.Space">
+<img
+src="../assets/obsedian-logo.svg"
+alt="Obsedian.Space"
+class="app-brand-logo"
+>
+<span class="app-brand-name">Obsedian.Space</span>
+</a>
+<button id="logout">Logout</button>
 </header>
-
+<br>
 <main>
-  <section id="login" class="card">
-    <h1>Welcome back</h1>
-    <p>Email, password, magic link, phone OTP, Google or GitHub.</p>
-
-    <input id="email" type="email" placeholder="Email">
-    <input id="password" type="password" placeholder="Password">
-    <button id="passwordBtn">Sign in</button>
-    <button id="emailBtn">Send email link</button>
-
-    <div class="split">
-      <button id="google">Google</button>
-      <button id="github">GitHub</button>
-    </div>
-
-    <input id="phone" placeholder="+91XXXXXXXXXX">
-    <button id="phoneBtn">Send phone OTP</button>
-    <p id="msg"></p>
-  </section>
-
-  <section id="dash" class="hidden">
-    <div class="top">
-      <div>
-        <small>WORKSPACE</small>
-        <h1 id="hello">Dashboard</h1>
-      </div>
-      <span id="badge"></span>
-    </div>
-
-    <div class="stats" id="stats"></div>
-
-    <div class="grid">
-      <section class="card">
-        <h2>Websites</h2>
-        <input id="url" placeholder="https://example.com">
-        <input id="name" placeholder="Website name">
-        <button id="add">Add website</button>
-        <div id="sites"></div>
-      </section>
-
-      <section class="card">
-        <h2>AI Operations</h2>
-        <button id="audit">Run AI audit</button>
-        <button id="strategy">Generate SEO strategy</button>
-        <button id="report">Generate weekly report</button>
-        <pre id="out"></pre>
-      </section>
-    </div>
-
-    <section class="card">
-      <h2>Approval Queue</h2>
-      <div id="approvals"></div>
-    </section>
-
-    <section class="card">
-      <h2>Plan &amp; Billing</h2>
-      <div id="billing"></div>
-    </section>
-
-    <section class="card">
-      <h2>Support</h2>
-      <input id="subject" placeholder="Subject">
-      <textarea id="support" placeholder="How can we help?"></textarea>
-      <button id="ticket">Create support ticket</button>
-    </section>
-  </section>
-</main>
-
-<div id="upgradeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="upgradeTitle">
-  <div class="modal-card">
-    <button id="upgradeClose" class="modal-close" aria-label="Close">×</button>
-    <small>OBSEDIAN.SPACE</small>
-    <h2 id="upgradeTitle">Upgrade your plan</h2>
-    <p>Choose monthly or yearly billing. Your website limits increase immediately after a successful subscription.</p>
-
-    <div class="upgrade-grid">
-      <article class="upgrade-plan">
-        <span>GROWTH</span>
-        <h3>₹99 <small>/ month</small></h3>
-        <p>₹1,050 / year · up to 20 websites</p>
-        <button data-plan="growth" data-billing="monthly">Choose monthly</button>
-        <button data-plan="growth" data-billing="yearly" class="secondary">Choose yearly</button>
-      </article>
-
-      <article class="upgrade-plan featured">
-        <span>SCALE</span>
-        <h3>₹200 <small>/ month</small></h3>
-        <p>₹1,990 / year · up to 100 websites</p>
-        <button data-plan="scale" data-billing="monthly">Choose monthly</button>
-        <button data-plan="scale" data-billing="yearly" class="secondary">Choose yearly</button>
-      </article>
-    </div>
-
-    <small class="checkout-note">Payment checkout must be connected to Razorpay before production payments are accepted.</small>
-  </div>
+<section id="login" class="card">
+<h1>Welcome back</h1>
+<p>Email, password, magic link, phone OTP, Google or GitHub.</p>
+<br>
+<input id="email" type="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button id="passwordBtn">Sign in</button>
+<button id="emailBtn">Send email link</button>
+<br>
+<div class="split">
+<button id="google">Google</button>
+<button id="github">GitHub</button>
 </div>
-
+<br>
+<input id="phone" placeholder="+91XXXXXXXXXX">
+<button id="phoneBtn">Send phone OTP</button>
+<p id="msg"></p>
+</section>
+<br>
+<section id="dash" class="hidden">
+<div class="top">
+<div>
+<small>WORKSPACE</small>
+<h1 id="hello">Dashboard</h1>
+</div>
+<span id="badge"></span>
+</div>
+<br>
+<div class="stats" id="stats"></div>
+<br>
+<div class="grid">
+<section class="card">
+<h2>Websites</h2>
+<input id="url" placeholder="https\://example.com">
+<input id="name" placeholder="Website name">
+<button id="add">Add website</button>
+<div id="sites"></div>
+</section>
+<br>
+<section class="card">
+<h2>AI Operations</h2>
+<button id="audit">Run AI audit</button>
+<button id="strategy">Generate SEO strategy</button>
+<button id="report">Generate weekly report</button>
+<pre id="out"></pre>
+</section>
+</div>
+<br>
+<section class="card">
+<h2>Approval Queue</h2>
+<div id="approvals"></div>
+</section>
+<br>
+<section class="card">
+<h2>Plan &amp; Billing</h2>
+<div id="billing"></div>
+</section>
+<br>
+<section class="card">
+<h2>Support</h2>
+<input id="subject" placeholder="Subject">
+<textarea id="support" placeholder="How can we help?"></textarea>
+<button id="ticket">Create support ticket</button>
+</section>
+</section>
+</main>
+<br>
+<div id="upgradeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="upgradeTitle">
+<div class="modal-card">
+<button id="upgradeClose" class="modal-close" aria-label="Close">×</button>
+<small>OBSEDIAN.SPACE</small>
+<h2 id="upgradeTitle">Upgrade your plan</h2>
+<p>Choose monthly or yearly billing. Your website limits increase immediately after a successful subscription.</p>
+<br>
+<div class="upgrade-grid">
+<article class="upgrade-plan">
+<span>GROWTH</span>
+<h3>₹99 <small>/ month</small></h3>
+<p>₹1,050 / year · up to 20 websites</p>
+<button data-plan="growth" data-billing="monthly">Choose monthly</button>
+<button data-plan="growth" data-billing="yearly" class="secondary">Choose yearly</button>
+</article>
+<br>
+<article class="upgrade-plan featured">
+<span>SCALE</span>
+<h3>₹200 <small>/ month</small></h3>
+<p>₹1,990 / year · up to 100 websites</p>
+<button data-plan="scale" data-billing="monthly">Choose monthly</button>
+<button data-plan="scale" data-billing="yearly" class="secondary">Choose yearly</button>
+</article>
+</div>
+<br>
+<small class="checkout-note">Payment checkout must be connected to Razorpay before production payments are accepted.</small>
+</div>
+</div>
+<br>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/app-config.js"></script>
-<script src="/app.js"></script>
+<script src="../app-config.js"></script>
+<script src="../app.js"></script>
 </body>
 </html>
+

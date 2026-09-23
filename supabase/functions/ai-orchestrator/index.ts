@@ -1,3 +1,208 @@
+function cleanAIJsonText(value: string): string {
+    let cleaned = String(value || "").trim();
+
+    cleaned = cleaned.replace(
+        /^```(?:json)?\s*/i,
+        ""
+    );
+
+    cleaned = cleaned.replace(
+        /\s*```$/i,
+        ""
+    );
+
+    return cleaned.trim();
+}
+
+
+function parseEmbeddedAIJson(value: string): any | null {
+    const cleaned = cleanAIJsonText(value);
+
+    if (!cleaned) {
+        return null;
+    }
+
+    // First try the complete response directly
+    try {
+        return JSON.parse(cleaned);
+    } catch {
+        // Continue and search for embedded JSON
+    }
+
+    const starts = ["{", "["];
+
+    for (const startChar of starts) {
+        const start = cleaned.indexOf(startChar);
+
+        if (start < 0) {
+            continue;
+        }
+
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+
+        for (let i = start; i < cleaned.length; i++) {
+            const ch = cleaned[i];
+
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (ch === "\\") {
+                    escaped = true;
+                } else if (ch === '"') {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (ch === '"') {
+                inString = true;
+                continue;
+            }
+
+            if (ch === "{" || ch === "[") {
+                depth++;
+            } else if (ch === "}" || ch === "]") {
+                depth--;
+
+                if (depth === 0) {
+                    const candidate =
+                        cleaned.slice(start, i + 1);
+
+                    try {
+                        return JSON.parse(candidate);
+                    } catch {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+
+function normalizeAuditJson(outputText: string): any {
+    const direct =
+        parseEmbeddedAIJson(outputText);
+
+    if (direct) {
+
+        if (
+            direct.audit &&
+            typeof direct.audit === "object"
+        ) {
+            return direct.audit;
+        }
+
+        if (
+            direct.result &&
+            typeof direct.result === "object"
+        ) {
+            return direct.result;
+        }
+
+        return direct;
+    }
+
+    return {
+        summary: {
+            overall_observations:
+                outputText
+                    ? [outputText]
+                    : [],
+
+            critical_issues: [],
+            warnings: [],
+            positive_signals: []
+        },
+
+        technical_seo: [],
+        on_page_seo: [],
+        content: [],
+        prioritized_actions: []
+    };
+}
+
+
+function normalizeStringArray(value: any): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value
+        .map(item =>
+            typeof item === "string"
+                ? item
+                : String(item ?? "")
+        )
+        .filter(Boolean);
+}
+
+
+function normalizeAuditShape(audit: any): any {
+
+    const source =
+        audit &&
+        typeof audit === "object"
+            ? audit
+            : {};
+
+    const summary =
+        source.summary &&
+        typeof source.summary === "object"
+            ? source.summary
+            : {};
+
+    return {
+        summary: {
+            overall_observations:
+                normalizeStringArray(
+                    summary.overall_observations
+                ),
+
+            critical_issues:
+                normalizeStringArray(
+                    summary.critical_issues
+                ),
+
+            warnings:
+                normalizeStringArray(
+                    summary.warnings
+                ),
+
+            positive_signals:
+                normalizeStringArray(
+                    summary.positive_signals
+                )
+        },
+
+        technical_seo:
+            Array.isArray(source.technical_seo)
+                ? source.technical_seo
+                : [],
+
+        on_page_seo:
+            Array.isArray(source.on_page_seo)
+                ? source.on_page_seo
+                : [],
+
+        content:
+            Array.isArray(source.content)
+                ? source.content
+                : [],
+
+        prioritized_actions:
+            Array.isArray(source.prioritized_actions)
+                ? source.prioritized_actions
+                : []
+    };
+}
+
+
 import {
     userFrom,
     userClient
