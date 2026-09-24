@@ -597,7 +597,7 @@ if (apR.error) {
 
 } else {
 
-            $("approvals").innerHTML =
+                   $("approvals").innerHTML =
 
             (apR.data || [])
                 .map(
