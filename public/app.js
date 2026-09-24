@@ -492,6 +492,7 @@ window.openUpgrade = openUpgrade;
 window.closeUpgrade = closeUpgrade;
 
 
+
 /* =========================
    LOAD DASHBOARD
 ========================= */
@@ -632,8 +633,8 @@ async function load() {
         .map(
             x =>
                 `<div class="stat">
-                    <small>${x[0]}</small><br>
-                    <b>${x[1]}</b>
+                    <small>${esc(x[0])}</small><br>
+                    <b>${esc(x[1])}</b>
                 </div>`
         )
         .join("");
@@ -644,8 +645,8 @@ async function load() {
                 .map(
                     s =>
                         `<div class="item">
-                            <b>${s.name || s.url}</b><br>
-                            <small>${s.url}</small>
+                            <b>${esc(s.name || s.url)}</b><br>
+                            <small>${esc(s.url)}</small>
                         </div>`
                 )
                 .join("")
@@ -657,10 +658,12 @@ async function load() {
             sub?.plans?.name ||
             "Free";
 
+
         const remainingDays =
             daysRemaining(
                 sub?.subscription_ends_at
             );
+
 
         const expired =
             isPlanExpired(sub) ||
@@ -669,30 +672,40 @@ async function load() {
 
 
         $("billing").innerHTML = sub
+
             ? `
                 <div class="billing-summary">
 
                     <div>
-                        <strong>${planName}</strong>
 
-                        <span class="billing-status ${
-                            expired
-                                ? "expired"
-                                : "active"
-                        }">
+                        <strong>
+                            ${esc(planName)}
+                        </strong>
+
+                        <span
+                            class="billing-status ${
+                                expired
+                                    ? "expired"
+                                    : "active"
+                            }"
+                        >
                             ${
                                 expired
                                     ? "Expired / Paused"
-                                    : sub.status
+                                    : esc(sub.status)
                             }
                         </span>
+
                     </div>
 
+
                     <p>
+
                         ${
                             sub.plans?.max_websites ||
                             0
                         }
+
                         website${
                             (
                                 sub.plans?.max_websites ||
@@ -711,15 +724,21 @@ async function load() {
                                 ).toLocaleDateString()
                                 : "—"
                         }
+
                     </p>
+
 
                     ${
                         planName === "Free" &&
                         !expired
+
                             ? `
                                 <div class="trial-box">
+
                                     <b>
-                                        ${remainingDays}
+                                        ${
+                                            remainingDays
+                                        }
                                         days remaining
                                     </b>
 
@@ -727,14 +746,18 @@ async function load() {
                                         Free plan ·
                                         45-day trial
                                     </span>
+
                                 </div>
                             `
+
                             : ""
                     }
+
 
                     ${
                         planName === "Free" ||
                         expired
+
                             ? `
                                 <button
                                     class="upgrade-btn"
@@ -744,11 +767,13 @@ async function load() {
                                     Upgrade Plan
                                 </button>
                             `
+
                             : ""
                     }
 
                 </div>
             `
+
             : `
                 <div class="billing-summary">
 
@@ -767,95 +792,183 @@ async function load() {
                 </div>
             `;
 
-const approvalItems = apR.data || [];
 
-if (apR.error) {
-    console.error("Approval Queue error:", apR.error);
+        /* =========================
+           APPROVAL QUEUE
+        ========================= */
 
-    $("approvals").innerHTML = `
-        <div class="report-error">
-            <strong>Could not load Approval Queue</strong>
-            <div>${esc(apR.error.message || "Unknown database error")}</div>
-        </div>
-    `;
+        const approvalItems =
+            apR.data || [];
 
-} else if (!approvalItems.length) {
 
-    $("approvals").innerHTML = `
-        <div class="report-empty">
-            No pending approvals.
-        </div>
-    `;
+        if (apR.error) {
 
-} else {
+            console.error(
+                "Approval Queue error:",
+                apR.error
+            );
 
-    $("approvals").innerHTML =
-        (apR.data || [])
-            .map(item => {
 
-                return `
-                    <div class="approval-item">
-                        <div class="approval-main">
-                            <strong>${esc(item.title || "Pending approval")}</strong>
+            $("approvals").innerHTML = `
+                <div class="report-error">
 
-                            <div class="approval-description">
-                                ${esc(
-                                    item.description ||
-                                    item.content ||
-                                    "No description available."
-                                )}
-                            </div>
+                    <strong>
+                        Could not load Approval Queue
+                    </strong>
 
-                            <small>
-                                ${esc(item.category || "General")}
-                                ·
-                                ${esc(item.priority || "normal")}
-                            </small>
-                        </div>
-
-                        <div class="approval-actions">
-
-                            <button
-                                class="approve-btn"
-                                data-id="${esc(item.id)}"
-                            >
-                                Approve
-                            </button>
-
-                            <button
-                                class="reject-btn"
-                                data-id="${esc(item.id)}"
-                            >
-                                Reject
-                            </button>
-
-                        </div>
+                    <div>
+                        ${esc(
+                            apR.error.message ||
+                            "Unknown database error"
+                        )}
                     </div>
-                `;
-            })
-            .join("")
-            || "<p>No pending approvals.</p>";
 
+                </div>
+            `;
+
+
+        } else if (!approvalItems.length) {
+
+            $("approvals").innerHTML = `
+                <div class="report-empty">
+                    No pending approvals.
+                </div>
+            `;
+
+
+        } else {
+
+            $("approvals").innerHTML =
+
+                approvalItems
+                    .map(
+                        item => {
+
+                            return `
+                                <div
+                                    class="approval-item"
+                                >
+
+                                    <div
+                                        class="approval-main"
+                                    >
+
+                                        <strong>
+                                            ${esc(
+                                                item.title ||
+                                                "Pending approval"
+                                            )}
+                                        </strong>
+
+
+                                        <div
+                                            class="approval-description"
+                                        >
+                                            ${esc(
+                                                item.description ||
+                                                item.content ||
+                                                "No description available."
+                                            )}
+                                        </div>
+
+
+                                        <small>
+
+                                            ${esc(
+                                                item.category ||
+                                                "General"
+                                            )}
+
+                                            ·
+
+                                            ${esc(
+                                                item.priority ||
+                                                "normal"
+                                            )}
+
+                                        </small>
+
+                                    </div>
+
+
+                                    <div
+                                        class="approval-actions"
+                                    >
+
+                                        <button
+                                            class="approve-btn"
+                                            type="button"
+                                            data-id="${esc(item.id)}"
+                                            onclick="approve('${esc(item.id)}')"
+                                        >
+                                            Approve
+                                        </button>
+
+
+                                        <button
+                                            class="reject-btn"
+                                            type="button"
+                                            data-id="${esc(item.id)}"
+                                            onclick="reject('${esc(item.id)}')"
+                                        >
+                                            Reject
+                                        </button>
+
+                                    </div>
+
+                                </div>
+                            `;
+                        }
+                    )
+                    .join("")
+
+                ||
+
+                "<p>No pending approvals.</p>";
         }
+
 
     } catch (error) {
 
-        console.error("Dashboard load error:", error);
+        console.error(
+            "Dashboard load error:",
+            error
+        );
 
-        $("approvals").innerHTML = `
-            <div class="report-error">
-                <strong>Dashboard loading error</strong>
-                <div>${esc(error.message || "Unknown error")}</div>
-            </div>
-        `;
+
+        if ($("approvals")) {
+
+            $("approvals").innerHTML = `
+                <div class="report-error">
+
+                    <strong>
+                        Dashboard loading error
+                    </strong>
+
+                    <div>
+                        ${esc(
+                            error.message ||
+                            "Unknown error"
+                        )}
+                    </div>
+
+                </div>
+            `;
+        }
+
 
     } finally {
 
-        // Restore loading state if required
-        if (typeof setLoading === "function") {
+        loading = false;
+
+        if (
+            typeof setLoading ===
+            "function"
+        ) {
             setLoading(false);
         }
     }
+}
 
 /* =========================
    ADD WEBSITE
