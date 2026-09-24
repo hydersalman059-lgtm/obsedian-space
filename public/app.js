@@ -560,30 +560,15 @@ async function load() {
                 </div>
             `;
 
-
-       const approvalItems =
-    apR.data || [];
-
+const approvalItems = apR.data || [];
 
 if (apR.error) {
-
-    console.error(
-        "Approval Queue error:",
-        apR.error
-    );
+    console.error("Approval Queue error:", apR.error);
 
     $("approvals").innerHTML = `
         <div class="report-error">
-            <strong>
-                Could not load Approval Queue
-            </strong>
-
-            <div>
-                ${esc(
-                    apR.error.message ||
-                    "Unknown database error"
-                )}
-            </div>
+            <strong>Could not load Approval Queue</strong>
+            <div>${esc(apR.error.message || "Unknown database error")}</div>
         </div>
     `;
 
@@ -597,37 +582,54 @@ if (apR.error) {
 
 } else {
 
-                   $("approvals").innerHTML =
+    $("approvals").innerHTML =
+        (apR.data || [])
+            .map(item => {
 
-            (apR.data || [])
-                .map(
-                    a =>
-                        `<div class="item">
-                            <b>${esc(a.title || "Untitled approval")}</b><br>
-                            ${esc(a.description || "")}<br>
+                return `
+                    <div class="approval-item">
+                        <div class="approval-main">
+                            <strong>${esc(item.title || "Pending approval")}</strong>
+
+                            <div class="approval-description">
+                                ${esc(
+                                    item.description ||
+                                    item.content ||
+                                    "No description available."
+                                )}
+                            </div>
+
                             <small>
-                                ${esc(a.status || "unknown")} · ${esc(a.risk_level || "normal")}
+                                ${esc(item.category || "General")}
+                                ·
+                                ${esc(item.priority || "normal")}
                             </small>
+                        </div>
 
-                            ${
-                                a.status === "pending"
-                                    ? `
-                                    <button onclick="approve('${a.id}')">
-                                        Approve
-                                    </button>
+                        <div class="approval-actions">
 
-                                    <button onclick="reject('${a.id}')">
-                                        Reject
-                                    </button>
-                                    `
-                                    : ""
-                            }
+                            <button
+                                class="approve-btn"
+                                data-id="${esc(item.id)}"
+                            >
+                                Approve
+                            </button>
 
-                        </div>`
-                )
-                .join("")
+                            <button
+                                class="reject-btn"
+                                data-id="${esc(item.id)}"
+                            >
+                                Reject
+                            </button>
 
+                        </div>
+                    </div>
+                `;
+            })
+            .join("")
             || "<p>No pending approvals.</p>";
+
+        }
 
     } catch (error) {
 
@@ -635,16 +637,18 @@ if (apR.error) {
 
         $("approvals").innerHTML = `
             <div class="report-error">
-                <strong>Dashboard data could not be loaded.</strong>
-                <div>${esc(error?.message || String(error))}</div>
+                <strong>Dashboard loading error</strong>
+                <div>${esc(error.message || "Unknown error")}</div>
             </div>
         `;
 
     } finally {
 
-        loading = false;
+        // Restore loading state if required
+        if (typeof setLoading === "function") {
+            setLoading(false);
+        }
     }
-}
 
 /* =========================
    ADD WEBSITE
