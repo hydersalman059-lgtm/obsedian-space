@@ -1685,12 +1685,12 @@ function renderStrategyReport(data) {
                 <div>
 
                     <div class="report-kicker">
-                        SEO STRATEGIST ·
-                        RULE-BASED ENGINE
+                        YOUR URL SUBMITTED TO ·
+                        25+ AI-AGENTS
                     </div>
 
                     <h2>
-                        30 / 60 / 90 Day SEO Strategy
+                        YOUR SEO Strategy CREATED AND SUBMITTED TO AI ENGINES
                     </h2>
 
                     <div class="report-url">
