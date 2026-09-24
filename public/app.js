@@ -597,78 +597,54 @@ if (apR.error) {
 
 } else {
 
-    $("approvals").innerHTML =
-        approvalItems
-            .map(a => `
+            $("approvals").innerHTML =
 
-                <div class="item">
+            (apR.data || [])
+                .map(
+                    a =>
+                        `<div class="item">
+                            <b>${esc(a.title || "Untitled approval")}</b><br>
+                            ${esc(a.description || "")}<br>
+                            <small>
+                                ${esc(a.status || "unknown")} · ${esc(a.risk_level || "normal")}
+                            </small>
 
-                    <b>
-                        ${esc(
-                            a.title ||
-                            "Untitled approval"
-                        )}
-                    </b>
+                            ${
+                                a.status === "pending"
+                                    ? `
+                                    <button onclick="approve('${a.id}')">
+                                        Approve
+                                    </button>
 
-                    <br>
+                                    <button onclick="reject('${a.id}')">
+                                        Reject
+                                    </button>
+                                    `
+                                    : ""
+                            }
 
-                    ${
-                        a.description
-                            ? esc(
-                                a.description
-                            )
-                            : ""
-                    }
+                        </div>`
+                )
+                .join("")
 
-                    <br>
+            || "<p>No pending approvals.</p>";
 
-                    <small>
-                        ${esc(
-                            a.status ||
-                            "unknown"
-                        )}
+    } catch (error) {
 
-                        ·
+        console.error("Dashboard load error:", error);
 
-                        ${esc(
-                            a.risk_level ||
-                            "normal"
-                        )}
-                    </small>
+        $("approvals").innerHTML = `
+            <div class="report-error">
+                <strong>Dashboard data could not be loaded.</strong>
+                <div>${esc(error?.message || String(error))}</div>
+            </div>
+        `;
 
-                    ${
-                        a.status ===
-                        "pending"
-                            ? `
-
-                                <br><br>
-
-                                <button
-                                    onclick="approve('${a.id}')"
-                                >
-                                    Approve
-                                </button>
-
-                                <button
-                                    onclick="reject('${a.id}')"
-                                >
-                                    Reject
-                                </button>
-
-                            `
-                            : ""
-                    }
-
-                </div>
-
-            `)
-            .join("");
-} finally {
+    } finally {
 
         loading = false;
     }
 }
-
 
 /* =========================
    ADD WEBSITE
