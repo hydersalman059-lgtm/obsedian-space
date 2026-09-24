@@ -561,56 +561,109 @@ async function load() {
             `;
 
 
-        $("approvals").innerHTML =
-
-            (apR.data || [])
-                .map(
-                    a =>
-                        `<div class="item">
-
-                            <b>
-                                ${a.title}
-                            </b>
-
-                            <br>
-
-                            ${a.description || ""}
-
-                            <br>
-
-                            <small>
-                                ${a.status}
-                                ·
-                                ${a.risk_level}
-                            </small>
-
-                            ${
-                                a.status === "pending"
-                                    ? `
-                                        <button
-                                            onclick="approve('${a.id}')"
-                                        >
-                                            Approve
-                                        </button>
-
-                                        <button
-                                            onclick="reject('${a.id}')"
-                                        >
-                                            Reject
-                                        </button>
-                                    `
-                                    : ""
-                            }
-
-                        </div>`
-                )
-                .join("")
-
-            ||
-            "<p>No pending approvals.</p>";
+       const approvalItems =
+    apR.data || [];
 
 
-    } finally {
+if (apR.error) {
+
+    console.error(
+        "Approval Queue error:",
+        apR.error
+    );
+
+    $("approvals").innerHTML = `
+        <div class="report-error">
+            <strong>
+                Could not load Approval Queue
+            </strong>
+
+            <div>
+                ${esc(
+                    apR.error.message ||
+                    "Unknown database error"
+                )}
+            </div>
+        </div>
+    `;
+
+} else if (!approvalItems.length) {
+
+    $("approvals").innerHTML = `
+        <div class="report-empty">
+            No pending approvals.
+        </div>
+    `;
+
+} else {
+
+    $("approvals").innerHTML =
+        approvalItems
+            .map(a => `
+
+                <div class="item">
+
+                    <b>
+                        ${esc(
+                            a.title ||
+                            "Untitled approval"
+                        )}
+                    </b>
+
+                    <br>
+
+                    ${
+                        a.description
+                            ? esc(
+                                a.description
+                            )
+                            : ""
+                    }
+
+                    <br>
+
+                    <small>
+                        ${esc(
+                            a.status ||
+                            "unknown"
+                        )}
+
+                        ·
+
+                        ${esc(
+                            a.risk_level ||
+                            "normal"
+                        )}
+                    </small>
+
+                    ${
+                        a.status ===
+                        "pending"
+                            ? `
+
+                                <br><br>
+
+                                <button
+                                    onclick="approve('${a.id}')"
+                                >
+                                    Approve
+                                </button>
+
+                                <button
+                                    onclick="reject('${a.id}')"
+                                >
+                                    Reject
+                                </button>
+
+                            `
+                            : ""
+                    }
+
+                </div>
+
+            `)
+            .join("");
+} finally {
 
         loading = false;
     }
@@ -911,48 +964,62 @@ function renderMetric(
 
 function renderAuditReport(data) {
 
-    const result =
-        data?.result ||
+    const audit =
         data?.audit ||
-        data ||
         {};
 
+    const crawl =
+        data?.crawl ||
+        {};
+
+    const summary =
+        audit?.summary ||
+        {};
 
     const metrics =
-        result.metrics ||
+        audit?.detailed_metrics ||
         {};
 
-
-    const issues =
-        result.issues ||
-        result.recommendations ||
+    const technical =
+        audit?.technical_seo ||
         [];
 
-
-    const recommendations =
-        result.recommendations ||
+    const onPage =
+        audit?.on_page_seo ||
         [];
 
+    const content =
+        audit?.content ||
+        [];
+
+    const actions =
+        audit?.prioritized_actions ||
+        [];
 
     const url =
-        result.url ||
         data?.url ||
         currentSites[0]?.url ||
         "";
 
-
     const score =
-        Number(
-            result.score ??
-            data?.score ??
-            0
-        );
+        Number(data?.score ?? 0);
+
+    const criticalIssues =
+        summary?.critical_issues ||
+        [];
+
+    const warnings =
+        summary?.warnings ||
+        [];
+
+    const positiveSignals =
+        summary?.positive_signals ||
+        [];
 
 
-    const issueCount =
-        Array.isArray(issues)
-            ? issues.length
-            : 0;
+    const totalIssues =
+        criticalIssues.length +
+        warnings.length;
 
 
     $("out").innerHTML = `
@@ -998,84 +1065,293 @@ function renderAuditReport(data) {
 
                 ${renderMetric(
                     "Pages crawled",
-                    metrics.pages_crawled ??
-                    metrics.pages ??
-                    "—"
+                    crawl?.pages_crawled ??
+                    crawl?.pages ??
+                    1
                 )}
 
                 ${renderMetric(
                     "Issues found",
-                    issueCount,
-                    issueCount
+                    totalIssues,
+                    totalIssues
                         ? "bad"
                         : "good"
                 )}
 
                 ${renderMetric(
                     "Response time",
-                    metrics.response_ms != null
-                        ? `${metrics.response_ms} ms`
+                    crawl?.response_time_ms != null
+                        ? `${crawl.response_time_ms} ms`
                         : "—"
                 )}
 
                 ${renderMetric(
                     "HTTP status",
-                    metrics.status_code ??
+                    crawl?.homepage_status ??
                     "—"
                 )}
 
             </div>
 
 
-            <section
-                class="report-section"
-            >
+            <section class="report-section">
 
                 <h3>
-                    Audit findings
+                    Overall observations
                 </h3>
 
                 ${
                     renderList(
-                        issues,
-                        "No SEO issues were detected from the available crawl signals."
+                        summary?.overall_observations ||
+                        [],
+                        "No observations available."
                     )
                 }
 
             </section>
 
 
-            <section
-                class="report-section"
-            >
+            <section class="report-section">
 
                 <h3>
-                    Priority recommendations
+                    Critical issues
                 </h3>
 
                 ${
                     renderList(
-                        recommendations,
-                        "No additional recommendations were generated."
+                        criticalIssues,
+                        "No critical issues detected."
                     )
                 }
 
             </section>
 
 
-            ${
-                result.note
-                    ? `
-                        <div class="report-note">
-                            ${esc(
-                                result.note
-                            )}
-                        </div>
-                    `
-                    : ""
-            }
+            <section class="report-section">
+
+                <h3>
+                    Warnings
+                </h3>
+
+                ${
+                    renderList(
+                        warnings,
+                        "No warnings detected."
+                    )
+                }
+
+            </section>
+
+
+            <section class="report-section">
+
+                <h3>
+                    Technical SEO
+                </h3>
+
+                ${
+                    renderList(
+                        technical,
+                        "No technical SEO findings."
+                    )
+                }
+
+            </section>
+
+
+            <section class="report-section">
+
+                <h3>
+                    On-Page SEO
+                </h3>
+
+                ${
+                    renderList(
+                        onPage,
+                        "No on-page SEO findings."
+                    )
+                }
+
+            </section>
+
+
+            <section class="report-section">
+
+                <h3>
+                    Content
+                </h3>
+
+                ${
+                    renderList(
+                        content,
+                        "No content findings."
+                    )
+                }
+
+            </section>
+
+
+            <section class="report-section">
+
+                <h3>
+                    Priority Actions
+                </h3>
+
+                ${
+                    renderList(
+                        actions,
+                        "No priority actions generated."
+                    )
+                }
+
+            </section>
+
+
+            <section class="report-section">
+
+                <h3>
+                    Positive Signals
+                </h3>
+
+                ${
+                    renderList(
+                        positiveSignals,
+                        "No positive signals recorded."
+                    )
+                }
+
+            </section>
+
+
+            <section class="report-section">
+
+                <h3>
+                    Detailed Metrics
+                </h3>
+
+                <div class="report-detail-grid">
+
+                    ${renderMetric(
+                        "Title",
+                        metrics.title ||
+                        "Missing"
+                    )}
+
+                    ${renderMetric(
+                        "Title length",
+                        metrics.title_length ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "Meta description",
+                        metrics.meta_description
+                            ? "Present"
+                            : "Missing"
+                    )}
+
+                    ${renderMetric(
+                        "Meta length",
+                        metrics.meta_description_length ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "H1 count",
+                        metrics.h1_count ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "H2 count",
+                        metrics.h2_count ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "H3 count",
+                        metrics.h3_count ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "Images",
+                        metrics.image_count ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "Missing ALT",
+                        metrics.images_missing_alt ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "Internal links",
+                        metrics.internal_links ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "Word count",
+                        metrics.word_count ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "HTTPS",
+                        metrics.https
+                            ? "Yes"
+                            : "No"
+                    )}
+
+                    ${renderMetric(
+                        "Viewport",
+                        metrics.viewport
+                            ? "Yes"
+                            : "No"
+                    )}
+
+                    ${renderMetric(
+                        "Charset",
+                        metrics.charset
+                            ? "Yes"
+                            : "No"
+                    )}
+
+                    ${renderMetric(
+                        "Noindex",
+                        metrics.noindex
+                            ? "Yes"
+                            : "No"
+                    )}
+
+                    ${renderMetric(
+                        "JSON-LD blocks",
+                        metrics.structured_data_blocks ??
+                        0
+                    )}
+
+                    ${renderMetric(
+                        "robots.txt",
+                        metrics.robots_exists
+                            ? "Found"
+                            : "Missing"
+                    )}
+
+                    ${renderMetric(
+                        "sitemap.xml",
+                        metrics.sitemap_exists
+                            ? "Found"
+                            : "Missing"
+                    )}
+
+                </div>
+
+            </section>
 
         </div>
+
     `;
 }
 
@@ -1086,50 +1362,18 @@ function renderAuditReport(data) {
 
 function renderStrategyReport(data) {
 
-    const result =
-        data?.result ||
-        data?.strategy ||
-        data ||
+    const audit =
+        data?.audit ||
         {};
 
+    const strategy =
+        audit?.strategy ||
+        {};
 
     const url =
-        result.url ||
         data?.url ||
         currentSites[0]?.url ||
         "";
-
-
-    const renderBlock = (
-        title,
-        value
-    ) => {
-
-        const items =
-            Array.isArray(value)
-                ? value
-                : [value];
-
-
-        return `
-
-            <section
-                class="report-section"
-            >
-
-                <h3>
-                    ${esc(title)}
-                </h3>
-
-                ${
-                    renderList(
-                        items.filter(Boolean)
-                    )
-                }
-
-            </section>
-        `;
-    };
 
 
     $("out").innerHTML = `
@@ -1158,62 +1402,119 @@ function renderStrategyReport(data) {
             </div>
 
 
-            ${
-                renderBlock(
-                    "Current situation",
-                    result.current_situation
-                )
-            }
+            <section class="report-section">
+
+                <h3>
+                    Current Situation
+                </h3>
+
+                ${
+                    renderList(
+                        strategy.current_situation ||
+                        []
+                    )
+                }
+
+            </section>
 
 
             <div class="report-columns">
 
                 <div>
-                    ${
-                        renderBlock(
-                            "Days 1–30",
-                            result.days_30
-                        )
-                    }
+
+                    <section class="report-section">
+
+                        <h3>
+                            Days 1–30
+                        </h3>
+
+                        ${
+                            renderList(
+                                strategy.days_30 ||
+                                []
+                            )
+                        }
+
+                    </section>
+
                 </div>
 
-                <div>
-                    ${
-                        renderBlock(
-                            "Days 31–60",
-                            result.days_60
-                        )
-                    }
-                </div>
 
                 <div>
-                    ${
-                        renderBlock(
-                            "Days 61–90",
-                            result.days_90
-                        )
-                    }
+
+                    <section class="report-section">
+
+                        <h3>
+                            Days 31–60
+                        </h3>
+
+                        ${
+                            renderList(
+                                strategy.days_60 ||
+                                []
+                            )
+                        }
+
+                    </section>
+
+                </div>
+
+
+                <div>
+
+                    <section class="report-section">
+
+                        <h3>
+                            Days 61–90
+                        </h3>
+
+                        ${
+                            renderList(
+                                strategy.days_90 ||
+                                []
+                            )
+                        }
+
+                    </section>
+
                 </div>
 
             </div>
 
 
-            ${
-                renderBlock(
-                    "Content strategy",
-                    result.content_strategy
-                )
-            }
+            <section class="report-section">
+
+                <h3>
+                    Content Strategy
+                </h3>
+
+                ${
+                    renderList(
+                        strategy.content_strategy ||
+                        []
+                    )
+                }
+
+            </section>
 
 
-            ${
-                renderBlock(
-                    "Priority actions",
-                    result.priority_actions
-                )
-            }
+            <section class="report-section">
+
+                <h3>
+                    Priority Actions
+                </h3>
+
+                ${
+                    renderList(
+                        strategy.priority_actions ||
+                        []
+                    )
+                }
+
+            </section>
 
         </div>
+
     `;
 }
 
@@ -1224,15 +1525,15 @@ function renderStrategyReport(data) {
 
 function renderWeeklyReport(data) {
 
-    const result =
-        data?.result ||
-        data?.report ||
-        data ||
+    const audit =
+        data?.audit ||
         {};
 
+    const weekly =
+        audit?.weekly_report ||
+        {};
 
     const url =
-        result.url ||
         data?.url ||
         currentSites[0]?.url ||
         "";
@@ -1268,82 +1569,85 @@ function renderWeeklyReport(data) {
 
                 ${renderMetric(
                     "HTTP status",
-                    result.http_status ??
+                    weekly.http_status ??
                     "—"
                 )}
 
                 ${renderMetric(
                     "Response time",
-                    result.response_time_ms != null
-                        ? `${result.response_time_ms} ms`
+                    weekly.response_time_ms != null
+                        ? `${weekly.response_time_ms} ms`
                         : "—"
                 )}
 
                 ${renderMetric(
                     "Open issues",
-                    result.open_issues ??
-                    "—"
+                    weekly.open_issues ??
+                    0
                 )}
 
                 ${renderMetric(
                     "Health",
-                    result.health ??
-                    "—"
+                    weekly.current_health?.[0] ||
+                    "Available"
                 )}
 
             </div>
 
 
-            <section
-                class="report-section"
-            >
+            <section class="report-section">
 
                 <h3>
-                    Issues to watch
+                    Current Health
                 </h3>
 
                 ${
                     renderList(
-                        result.issues_to_watch
+                        weekly.current_health ||
+                        []
                     )
                 }
 
             </section>
 
 
-            <section
-                class="report-section"
-            >
+            <section class="report-section">
 
                 <h3>
-                    Next actions
+                    Issues to Watch
                 </h3>
 
                 ${
                     renderList(
-                        result.next_actions
+                        weekly.issues_to_watch ||
+                        [],
+                        "No issues currently identified."
                     )
                 }
 
             </section>
 
 
-            ${
-                result.note
-                    ? `
-                        <div class="report-note">
-                            ${esc(
-                                result.note
-                            )}
-                        </div>
-                    `
-                    : ""
-            }
+            <section class="report-section">
+
+                <h3>
+                    Next Actions
+                </h3>
+
+                ${
+                    renderList(
+                        weekly.next_actions ||
+                        [],
+                        "No immediate actions identified."
+                    )
+                }
+
+            </section>
 
         </div>
+
     `;
 }
-
 
 /* =========================
    REPORT ROUTER
