@@ -69,33 +69,52 @@ function paint() {
    GOOGLE / GITHUB
 ========================= */
 
+/* =========================
+   AUTH BUTTONS
+========================= */
+
 async function oauth(provider) {
 
-    const { error } = await sb.auth.signInWithOAuth({
-        provider,
-        options: {
-            redirectTo: `${window.location.origin}/app/`
-        }
-    });
+    try {
 
-    if (error) {
-        $("msg").textContent = error.message;
+        $("msg").textContent =
+            "Connecting to " + provider + "...";
+
+        const { error } =
+            await sb.auth.signInWithOAuth({
+                provider: provider,
+                options: {
+                    redirectTo:
+                        window.location.origin + "/app/"
+                }
+            });
+
+        if (error) {
+            console.error("OAuth error:", error);
+            $("msg").textContent = error.message;
+        }
+
+    } catch (error) {
+
+        console.error("OAuth exception:", error);
+
+        $("msg").textContent =
+            error.message || "OAuth login failed.";
     }
 }
 
 
-$("google").onclick = () => oauth("google");
-$("github").onclick = () => oauth("github");
-
-
 /* =========================
-   EMAIL + PASSWORD LOGIN
+   EMAIL + PASSWORD
 ========================= */
 
-$("passwordBtn").onclick = async () => {
+async function passwordLogin() {
 
-    const email = $("email").value.trim();
-    const password = $("password").value;
+    const email =
+        $("email").value.trim();
+
+    const password =
+        $("password").value;
 
     if (!email) {
         $("msg").textContent =
@@ -109,108 +128,296 @@ $("passwordBtn").onclick = async () => {
         return;
     }
 
-    $("passwordBtn").disabled = true;
+    const button = $("passwordBtn");
+
+    button.disabled = true;
 
     $("msg").textContent =
         "Signing in...";
 
-    const { data, error } =
-        await sb.auth.signInWithPassword({
-            email,
-            password
-        });
+    try {
 
-    $("passwordBtn").disabled = false;
+        console.log("Starting password login:", email);
 
-    if (error) {
+        const result =
+            await sb.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+        console.log(
+            "Supabase login response:",
+            result
+        );
+
+        const data = result.data;
+        const error = result.error;
+
+        if (error) {
+
+            console.error(
+                "Password login error:",
+                error
+            );
+
+            $("msg").textContent =
+                error.message ||
+                "Unable to sign in.";
+
+            return;
+        }
+
+        session = data.session;
+
+        $("msg").textContent =
+            "Signed in successfully.";
+
+        paint();
+
+    } catch (error) {
 
         console.error(
-            "Password login error:",
+            "Password login exception:",
             error
         );
 
         $("msg").textContent =
-            error.message;
+            error.message ||
+            "Sign in failed.";
 
-        return;
+    } finally {
+
+        button.disabled = false;
     }
-
-    session = data.session;
-
-    $("msg").textContent =
-        "Signed in successfully.";
-
-    paint();
-};
+}
 
 
 /* =========================
    EMAIL MAGIC LINK
 ========================= */
 
-$("emailBtn").onclick = async () => {
+async function sendEmailLink() {
 
-    const email = $("email").value.trim();
+    const email =
+        $("email").value.trim();
 
     if (!email) {
+
         $("msg").textContent =
             "Please enter your email.";
+
         return;
     }
 
-    $("emailBtn").disabled = true;
+    const button = $("emailBtn");
+
+    button.disabled = true;
 
     $("msg").textContent =
         "Sending email link...";
 
-    const { error } =
-        await sb.auth.signInWithOtp({
-            email,
-            options: {
-                emailRedirectTo:
-                    `${window.location.origin}/app/`
-            }
-        });
+    try {
 
-    $("emailBtn").disabled = false;
+        console.log(
+            "Sending magic link:",
+            email
+        );
 
-    $("msg").textContent =
-        error?.message ||
-        "Email link sent. Please check your inbox.";
-};
+        const result =
+            await sb.auth.signInWithOtp({
+                email: email,
+
+                options: {
+                    emailRedirectTo:
+                        window.location.origin +
+                        "/app/"
+                }
+            });
+
+        console.log(
+            "Magic link response:",
+            result
+        );
+
+        if (result.error) {
+
+            console.error(
+                "Magic link error:",
+                result.error
+            );
+
+            $("msg").textContent =
+                result.error.message;
+
+            return;
+        }
+
+        $("msg").textContent =
+            "Email link sent. Please check your inbox.";
+
+    } catch (error) {
+
+        console.error(
+            "Magic link exception:",
+            error
+        );
+
+        $("msg").textContent =
+            error.message ||
+            "Unable to send email link.";
+
+    } finally {
+
+        button.disabled = false;
+    }
+}
 
 
 /* =========================
    PHONE OTP
 ========================= */
 
-$("phoneBtn").onclick = async () => {
+async function sendPhoneOtp() {
 
-    const phone = $("phone").value.trim();
+    const phone =
+        $("phone").value.trim();
 
     if (!phone) {
+
         $("msg").textContent =
             "Please enter your phone number.";
+
         return;
     }
 
-    $("phoneBtn").disabled = true;
+    const button = $("phoneBtn");
+
+    button.disabled = true;
 
     $("msg").textContent =
         "Sending OTP...";
 
-    const { error } =
-        await sb.auth.signInWithOtp({
+    try {
+
+        console.log(
+            "Sending phone OTP:",
             phone
-        });
+        );
 
-    $("phoneBtn").disabled = false;
+        const result =
+            await sb.auth.signInWithOtp({
+                phone: phone
+            });
 
-    $("msg").textContent =
-        error?.message ||
-        "OTP sent.";
-};
+        console.log(
+            "Phone OTP response:",
+            result
+        );
 
+        if (result.error) {
+
+            console.error(
+                "Phone OTP error:",
+                result.error
+            );
+
+            $("msg").textContent =
+                result.error.message;
+
+            return;
+        }
+
+        $("msg").textContent =
+            "OTP sent. Please check your phone.";
+
+    } catch (error) {
+
+        console.error(
+            "Phone OTP exception:",
+            error
+        );
+
+        $("msg").textContent =
+            error.message ||
+            "Unable to send OTP.";
+
+    } finally {
+
+        button.disabled = false;
+    }
+}
+
+
+/* =========================
+   CONNECT BUTTONS
+========================= */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function () {
+
+        console.log(
+            "Obsedian authentication initialized."
+        );
+
+        const passwordBtn =
+            $("passwordBtn");
+
+        const emailBtn =
+            $("emailBtn");
+
+        const phoneBtn =
+            $("phoneBtn");
+
+        const googleBtn =
+            $("google");
+
+        const githubBtn =
+            $("github");
+
+
+        if (passwordBtn) {
+            passwordBtn.addEventListener(
+                "click",
+                passwordLogin
+            );
+        }
+
+        if (emailBtn) {
+            emailBtn.addEventListener(
+                "click",
+                sendEmailLink
+            );
+        }
+
+        if (phoneBtn) {
+            phoneBtn.addEventListener(
+                "click",
+                sendPhoneOtp
+            );
+        }
+
+        if (googleBtn) {
+            googleBtn.addEventListener(
+                "click",
+                function () {
+                    oauth("google");
+                }
+            );
+        }
+
+        if (githubBtn) {
+            githubBtn.addEventListener(
+                "click",
+                function () {
+                    oauth("github");
+                }
+            );
+
+        }
+
+    }
+);
 
 /* =========================
    LOGOUT
