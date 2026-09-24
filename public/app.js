@@ -1685,12 +1685,11 @@ function renderStrategyReport(data) {
                 <div>
 
                     <div class="report-kicker">
-                        YOUR URL SUBMITTED TO ·
-                        25+ AI-AGENTS
+                        YOUR URL SUBMITTED TO 25+ AI-AGENTS
                     </div>
 
                     <h2>
-                        YOUR SEO Strategy CREATED AND SUBMITTED TO AI ENGINES
+                        Your SEO Strategy Created & Submitted to AI Engines
                     </h2>
 
                     <div class="report-url">
