@@ -1,1 +1,224 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Obsedian.Space Admin</title><link rel="stylesheet" href="/assets/app.css"></head><body><header><a class="logo" href="/">OBSEDIAN<span>.SPACE</span></a><b>ADMIN CONTROL CENTER</b></header><main><div class="card"><h1>Operations Dashboard</h1><p>Tenant-safe analytics, subscription monitoring, AI usage, approvals and audit logs.</p></div><div id="metrics" class="stats"></div><div class="card"><h2>Filters</h2><input id="search" placeholder="Search audit/user/entity"><select id="kind"><option value="">All</option><option>ai_run</option><option>subscription</option><option>approval</option><option>ad_campaign</option></select><button id="refresh">Refresh</button></div><div class="card"><h2>Audit Log</h2><pre id="logs"></pre></div><div class="card"><h2>Branding</h2><p>Brand name, logo, colors, support email and feature flags should be edited through the admin Edge Function and logged.</p></div></main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="/app-config.js"></script><script src="/admin.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    <title>Obsedian.Space Admin</title>
+
+    <link rel="stylesheet" href="/assets/app.css">
+
+    <style>
+        body {
+            margin: 0;
+        }
+
+        .admin-layout {
+            display: grid;
+            grid-template-columns: 230px 1fr;
+            min-height: 100vh;
+        }
+
+        .admin-sidebar {
+            background: #111827;
+            color: #fff;
+            padding: 24px 16px;
+        }
+
+        .admin-sidebar h2 {
+            margin: 0 0 30px;
+        }
+
+        .admin-nav button {
+            width: 100%;
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            border: 0;
+            border-radius: 8px;
+            background: transparent;
+            color: #d1d5db;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .admin-nav button:hover,
+        .admin-nav button.active {
+            background: #374151;
+            color: #fff;
+        }
+
+        .admin-main {
+            padding: 28px;
+            overflow-x: auto;
+        }
+
+        .admin-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .admin-header h1 {
+            margin: 0;
+        }
+
+        .admin-table-wrapper {
+            overflow-x: auto;
+        }
+
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1000px;
+        }
+
+        .admin-table th,
+        .admin-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        .admin-table th {
+            background: #f9fafb;
+            font-size: 13px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 9px;
+            border-radius: 999px;
+            font-size: 12px;
+            background: #eef2ff;
+        }
+
+        .search-box {
+            width: 100%;
+            max-width: 500px;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+        }
+
+        .empty {
+            padding: 30px;
+            text-align: center;
+        }
+
+        @media(max-width:800px) {
+            .admin-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .admin-sidebar {
+                padding: 16px;
+            }
+
+            .admin-nav {
+                display: flex;
+                overflow-x: auto;
+                gap: 6px;
+            }
+
+            .admin-nav button {
+                width: auto;
+                white-space: nowrap;
+            }
+
+            .admin-main {
+                padding: 18px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="admin-layout">
+
+    <aside class="admin-sidebar">
+
+        <h2>OBSEDIAN<span>.SPACE</span></h2>
+
+        <div class="admin-nav">
+
+            <button data-section="dashboard">
+                Dashboard
+            </button>
+
+            <button data-section="users">
+                Users
+            </button>
+
+            <button data-section="websites">
+                Websites
+            </button>
+
+            <button data-section="subscriptions">
+                Subscriptions
+            </button>
+
+            <button data-section="payments">
+                Payments
+            </button>
+
+            <button data-section="ai">
+                AI Operations
+            </button>
+
+            <button data-section="approvals">
+                Approvals
+            </button>
+
+            <button data-section="support">
+                Support
+            </button>
+
+            <button data-section="audit">
+                Audit Logs
+            </button>
+
+            <button data-section="settings">
+                Settings
+            </button>
+
+        </div>
+
+    </aside>
+
+    <main class="admin-main">
+
+        <div class="admin-header">
+
+            <div>
+                <h1 id="pageTitle">
+                    Admin Dashboard
+                </h1>
+
+                <p>
+                    Obsedian.Space administration
+                </p>
+            </div>
+
+            <button id="logout">
+                Logout
+            </button>
+
+        </div>
+
+        <section id="content"></section>
+
+    </main>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/app-config.js"></script>
+<script src="/admin.js"></script>
+
+</body>
+</html>
