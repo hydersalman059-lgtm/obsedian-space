@@ -69,52 +69,33 @@ function paint() {
    GOOGLE / GITHUB
 ========================= */
 
-/* =========================
-   AUTH BUTTONS
-========================= */
-
 async function oauth(provider) {
 
-    try {
-
-        $("msg").textContent =
-            "Connecting to " + provider + "...";
-
-        const { error } =
-            await sb.auth.signInWithOAuth({
-                provider: provider,
-                options: {
-                    redirectTo:
-                        window.location.origin + "/app/"
-                }
-            });
-
-        if (error) {
-            console.error("OAuth error:", error);
-            $("msg").textContent = error.message;
+    const { error } = await sb.auth.signInWithOAuth({
+        provider,
+        options: {
+            redirectTo: `${window.location.origin}/app/`
         }
+    });
 
-    } catch (error) {
-
-        console.error("OAuth exception:", error);
-
-        $("msg").textContent =
-            error.message || "OAuth login failed.";
+    if (error) {
+        $("msg").textContent = error.message;
     }
 }
 
 
+$("google").onclick = () => oauth("google");
+$("github").onclick = () => oauth("github");
+
+
 /* =========================
-   EMAIL + PASSWORD
+   EMAIL + PASSWORD LOGIN
 ========================= */
 
-async function passwordLogin() {
+$("passwordBtn").onclick = async () => {
 
-    const email =
-        $("email").value.trim();
-
-    const password =
-        $("password").value;
+    const email = $("email").value.trim();
+    const password = $("password").value;
 
     if (!email) {
         $("msg").textContent =
@@ -128,296 +109,108 @@ async function passwordLogin() {
         return;
     }
 
-    const button = $("passwordBtn");
-
-    button.disabled = true;
+    $("passwordBtn").disabled = true;
 
     $("msg").textContent =
         "Signing in...";
 
-    try {
+    const { data, error } =
+        await sb.auth.signInWithPassword({
+            email,
+            password
+        });
 
-        console.log("Starting password login:", email);
+    $("passwordBtn").disabled = false;
 
-        const result =
-            await sb.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
-
-        console.log(
-            "Supabase login response:",
-            result
-        );
-
-        const data = result.data;
-        const error = result.error;
-
-        if (error) {
-
-            console.error(
-                "Password login error:",
-                error
-            );
-
-            $("msg").textContent =
-                error.message ||
-                "Unable to sign in.";
-
-            return;
-        }
-
-        session = data.session;
-
-        $("msg").textContent =
-            "Signed in successfully.";
-
-        paint();
-
-    } catch (error) {
+    if (error) {
 
         console.error(
-            "Password login exception:",
+            "Password login error:",
             error
         );
 
         $("msg").textContent =
-            error.message ||
-            "Sign in failed.";
+            error.message;
 
-    } finally {
-
-        button.disabled = false;
+        return;
     }
-}
+
+    session = data.session;
+
+    $("msg").textContent =
+        "Signed in successfully.";
+
+    paint();
+};
 
 
 /* =========================
    EMAIL MAGIC LINK
 ========================= */
 
-async function sendEmailLink() {
+$("emailBtn").onclick = async () => {
 
-    const email =
-        $("email").value.trim();
+    const email = $("email").value.trim();
 
     if (!email) {
-
         $("msg").textContent =
             "Please enter your email.";
-
         return;
     }
 
-    const button = $("emailBtn");
-
-    button.disabled = true;
+    $("emailBtn").disabled = true;
 
     $("msg").textContent =
         "Sending email link...";
 
-    try {
+    const { error } =
+        await sb.auth.signInWithOtp({
+            email,
+            options: {
+                emailRedirectTo:
+                    `${window.location.origin}/app/`
+            }
+        });
 
-        console.log(
-            "Sending magic link:",
-            email
-        );
+    $("emailBtn").disabled = false;
 
-        const result =
-            await sb.auth.signInWithOtp({
-                email: email,
-
-                options: {
-                    emailRedirectTo:
-                        window.location.origin +
-                        "/app/"
-                }
-            });
-
-        console.log(
-            "Magic link response:",
-            result
-        );
-
-        if (result.error) {
-
-            console.error(
-                "Magic link error:",
-                result.error
-            );
-
-            $("msg").textContent =
-                result.error.message;
-
-            return;
-        }
-
-        $("msg").textContent =
-            "Email link sent. Please check your inbox.";
-
-    } catch (error) {
-
-        console.error(
-            "Magic link exception:",
-            error
-        );
-
-        $("msg").textContent =
-            error.message ||
-            "Unable to send email link.";
-
-    } finally {
-
-        button.disabled = false;
-    }
-}
+    $("msg").textContent =
+        error?.message ||
+        "Email link sent. Please check your inbox.";
+};
 
 
 /* =========================
    PHONE OTP
 ========================= */
 
-async function sendPhoneOtp() {
+$("phoneBtn").onclick = async () => {
 
-    const phone =
-        $("phone").value.trim();
+    const phone = $("phone").value.trim();
 
     if (!phone) {
-
         $("msg").textContent =
             "Please enter your phone number.";
-
         return;
     }
 
-    const button = $("phoneBtn");
-
-    button.disabled = true;
+    $("phoneBtn").disabled = true;
 
     $("msg").textContent =
         "Sending OTP...";
 
-    try {
-
-        console.log(
-            "Sending phone OTP:",
+    const { error } =
+        await sb.auth.signInWithOtp({
             phone
-        );
+        });
 
-        const result =
-            await sb.auth.signInWithOtp({
-                phone: phone
-            });
+    $("phoneBtn").disabled = false;
 
-        console.log(
-            "Phone OTP response:",
-            result
-        );
+    $("msg").textContent =
+        error?.message ||
+        "OTP sent.";
+};
 
-        if (result.error) {
-
-            console.error(
-                "Phone OTP error:",
-                result.error
-            );
-
-            $("msg").textContent =
-                result.error.message;
-
-            return;
-        }
-
-        $("msg").textContent =
-            "OTP sent. Please check your phone.";
-
-    } catch (error) {
-
-        console.error(
-            "Phone OTP exception:",
-            error
-        );
-
-        $("msg").textContent =
-            error.message ||
-            "Unable to send OTP.";
-
-    } finally {
-
-        button.disabled = false;
-    }
-}
-
-
-/* =========================
-   CONNECT BUTTONS
-========================= */
-
-document.addEventListener(
-    "DOMContentLoaded",
-    function () {
-
-        console.log(
-            "Obsedian authentication initialized."
-        );
-
-        const passwordBtn =
-            $("passwordBtn");
-
-        const emailBtn =
-            $("emailBtn");
-
-        const phoneBtn =
-            $("phoneBtn");
-
-        const googleBtn =
-            $("google");
-
-        const githubBtn =
-            $("github");
-
-
-        if (passwordBtn) {
-            passwordBtn.addEventListener(
-                "click",
-                passwordLogin
-            );
-        }
-
-        if (emailBtn) {
-            emailBtn.addEventListener(
-                "click",
-                sendEmailLink
-            );
-        }
-
-        if (phoneBtn) {
-            phoneBtn.addEventListener(
-                "click",
-                sendPhoneOtp
-            );
-        }
-
-        if (googleBtn) {
-            googleBtn.addEventListener(
-                "click",
-                function () {
-                    oauth("google");
-                }
-            );
-        }
-
-        if (githubBtn) {
-            githubBtn.addEventListener(
-                "click",
-                function () {
-                    oauth("github");
-                }
-            );
-
-        }
-
-    }
-);
 
 /* =========================
    LOGOUT
@@ -490,7 +283,6 @@ function closeUpgrade() {
 
 window.openUpgrade = openUpgrade;
 window.closeUpgrade = closeUpgrade;
-
 
 
 /* =========================
@@ -633,8 +425,8 @@ async function load() {
         .map(
             x =>
                 `<div class="stat">
-                    <small>${esc(x[0])}</small><br>
-                    <b>${esc(x[1])}</b>
+                    <small>${x[0]}</small><br>
+                    <b>${x[1]}</b>
                 </div>`
         )
         .join("");
@@ -645,8 +437,8 @@ async function load() {
                 .map(
                     s =>
                         `<div class="item">
-                            <b>${esc(s.name || s.url)}</b><br>
-                            <small>${esc(s.url)}</small>
+                            <b>${s.name || s.url}</b><br>
+                            <small>${s.url}</small>
                         </div>`
                 )
                 .join("")
@@ -658,12 +450,10 @@ async function load() {
             sub?.plans?.name ||
             "Free";
 
-
         const remainingDays =
             daysRemaining(
                 sub?.subscription_ends_at
             );
-
 
         const expired =
             isPlanExpired(sub) ||
@@ -672,40 +462,30 @@ async function load() {
 
 
         $("billing").innerHTML = sub
-
             ? `
                 <div class="billing-summary">
 
                     <div>
+                        <strong>${planName}</strong>
 
-                        <strong>
-                            ${esc(planName)}
-                        </strong>
-
-                        <span
-                            class="billing-status ${
-                                expired
-                                    ? "expired"
-                                    : "active"
-                            }"
-                        >
+                        <span class="billing-status ${
+                            expired
+                                ? "expired"
+                                : "active"
+                        }">
                             ${
                                 expired
                                     ? "Expired / Paused"
-                                    : esc(sub.status)
+                                    : sub.status
                             }
                         </span>
-
                     </div>
 
-
                     <p>
-
                         ${
                             sub.plans?.max_websites ||
                             0
                         }
-
                         website${
                             (
                                 sub.plans?.max_websites ||
@@ -724,21 +504,15 @@ async function load() {
                                 ).toLocaleDateString()
                                 : "—"
                         }
-
                     </p>
-
 
                     ${
                         planName === "Free" &&
                         !expired
-
                             ? `
                                 <div class="trial-box">
-
                                     <b>
-                                        ${
-                                            remainingDays
-                                        }
+                                        ${remainingDays}
                                         days remaining
                                     </b>
 
@@ -746,18 +520,14 @@ async function load() {
                                         Free plan ·
                                         45-day trial
                                     </span>
-
                                 </div>
                             `
-
                             : ""
                     }
-
 
                     ${
                         planName === "Free" ||
                         expired
-
                             ? `
                                 <button
                                     class="upgrade-btn"
@@ -767,13 +537,11 @@ async function load() {
                                     Upgrade Plan
                                 </button>
                             `
-
                             : ""
                     }
 
                 </div>
             `
-
             : `
                 <div class="billing-summary">
 
@@ -793,180 +561,88 @@ async function load() {
             `;
 
 
-        /* =========================
-           APPROVAL QUEUE
-        ========================= */
-
-        const approvalItems =
-            apR.data || [];
+       const approvalItems =
+    apR.data || [];
 
 
-        if (apR.error) {
+if (apR.error) {
 
-            console.error(
-                "Approval Queue error:",
-                apR.error
-            );
+    console.error(
+        "Approval Queue error:",
+        apR.error
+    );
 
+    $("approvals").innerHTML = `
+        <div class="report-error">
+            <strong>
+                Could not load Approval Queue
+            </strong>
 
-            $("approvals").innerHTML = `
-                <div class="report-error">
+            <div>
+                ${esc(
+                    apR.error.message ||
+                    "Unknown database error"
+                )}
+            </div>
+        </div>
+    `;
 
-                    <strong>
-                        Could not load Approval Queue
-                    </strong>
+} else if (!approvalItems.length) {
 
-                    <div>
-                        ${esc(
-                            apR.error.message ||
-                            "Unknown database error"
-                        )}
-                    </div>
+    $("approvals").innerHTML = `
+        <div class="report-empty">
+            No pending approvals.
+        </div>
+    `;
 
-                </div>
-            `;
+} else {
 
+                   $("approvals").innerHTML =
 
-        } else if (!approvalItems.length) {
+            (apR.data || [])
+                .map(
+                    a =>
+                        `<div class="item">
+                            <b>${esc(a.title || "Untitled approval")}</b><br>
+                            ${esc(a.description || "")}<br>
+                            <small>
+                                ${esc(a.status || "unknown")} · ${esc(a.risk_level || "normal")}
+                            </small>
 
-            $("approvals").innerHTML = `
-                <div class="report-empty">
-                    No pending approvals.
-                </div>
-            `;
+                            ${
+                                a.status === "pending"
+                                    ? `
+                                    <button onclick="approve('${a.id}')">
+                                        Approve
+                                    </button>
 
+                                    <button onclick="reject('${a.id}')">
+                                        Reject
+                                    </button>
+                                    `
+                                    : ""
+                            }
 
-        } else {
+                        </div>`
+                )
+                .join("")
 
-            $("approvals").innerHTML =
-
-                approvalItems
-                    .map(
-                        item => {
-
-                            return `
-                                <div
-                                    class="approval-item"
-                                >
-
-                                    <div
-                                        class="approval-main"
-                                    >
-
-                                        <strong>
-                                            ${esc(
-                                                item.title ||
-                                                "Pending approval"
-                                            )}
-                                        </strong>
-
-
-                                        <div
-                                            class="approval-description"
-                                        >
-                                            ${esc(
-                                                item.description ||
-                                                item.content ||
-                                                "No description available."
-                                            )}
-                                        </div>
-
-
-                                        <small>
-
-                                            ${esc(
-                                                item.category ||
-                                                "General"
-                                            )}
-
-                                            ·
-
-                                            ${esc(
-                                                item.priority ||
-                                                "normal"
-                                            )}
-
-                                        </small>
-
-                                    </div>
-
-
-                                    <div
-                                        class="approval-actions"
-                                    >
-
-                                        <button
-                                            class="approve-btn"
-                                            type="button"
-                                            data-id="${esc(item.id)}"
-                                            onclick="approve('${esc(item.id)}')"
-                                        >
-                                            Approve
-                                        </button>
-
-
-                                        <button
-                                            class="reject-btn"
-                                            type="button"
-                                            data-id="${esc(item.id)}"
-                                            onclick="reject('${esc(item.id)}')"
-                                        >
-                                            Reject
-                                        </button>
-
-                                    </div>
-
-                                </div>
-                            `;
-                        }
-                    )
-                    .join("")
-
-                ||
-
-                "<p>No pending approvals.</p>";
-        }
-
+            || "<p>No pending approvals.</p>";
 
     } catch (error) {
 
-        console.error(
-            "Dashboard load error:",
-            error
-        );
+        console.error("Dashboard load error:", error);
 
-
-        if ($("approvals")) {
-
-            $("approvals").innerHTML = `
-                <div class="report-error">
-
-                    <strong>
-                        Dashboard loading error
-                    </strong>
-
-                    <div>
-                        ${esc(
-                            error.message ||
-                            "Unknown error"
-                        )}
-                    </div>
-
-                </div>
-            `;
-        }
-
+        $("approvals").innerHTML = `
+            <div class="report-error">
+                <strong>Dashboard data could not be loaded.</strong>
+                <div>${esc(error?.message || String(error))}</div>
+            </div>
+        `;
 
     } finally {
 
         loading = false;
-
-        if (
-            typeof setLoading ===
-            "function"
-        ) {
-            setLoading(false);
-        }
     }
 }
 
@@ -1685,11 +1361,12 @@ function renderStrategyReport(data) {
                 <div>
 
                     <div class="report-kicker">
-                        YOUR URL SUBMITTED TO 25+ AI-AGENTS
+                        SEO STRATEGIST ·
+                        RULE-BASED ENGINE
                     </div>
 
                     <h2>
-                        Your SEO Strategy Created & Submitted to AI Engines
+                        30 / 60 / 90 Day SEO Strategy
                     </h2>
 
                     <div class="report-url">
@@ -2315,83 +1992,15 @@ document
                     await response.json();
 
 
-               if (
-    data?.success &&
-    data?.order_id &&
-    data?.key_id
-) {
+                if (
+                    data?.checkout_url
+                ) {
 
-    const options = {
+                    window.location.href =
+                        data.checkout_url;
 
-        key:
-            data.key_id,
-
-        amount:
-            data.amount,
-
-        currency:
-            data.currency || "INR",
-
-        name:
-            "Obsedian.Space",
-
-        description:
-            `${plan.toUpperCase()} Plan - ${billingCycle}`,
-
-        order_id:
-            data.order_id,
-
-        prefill: {
-            email:
-                data.customer?.email || ""
-        },
-
-        theme: {
-            color:
-                "#6d28d9"
-        },
-
-        modal: {
-            ondismiss: () => {
-                button.disabled = false;
-
-                button.textContent =
-                    billingCycle === "yearly"
-                        ? "Choose yearly"
-                        : "Choose monthly";
-            }
-        },
-
-        handler: function (response) {
-
-            /*
-             * Razorpay payment response is
-             * intentionally not trusted as the
-             * final activation signal.
-             *
-             * Webhook will activate the plan.
-             */
-
-            alert(
-                "Payment received. Your plan will be activated after payment verification."
-            );
-
-            closeUpgrade();
-
-            setTimeout(
-                () => load(),
-                1500
-            );
-        }
-    };
-
-    const razorpay =
-        new Razorpay(options);
-
-    razorpay.open();
-
-    return;
-}
+                    return;
+                }
 
 
                 alert(

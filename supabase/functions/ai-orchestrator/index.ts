@@ -1,208 +1,3 @@
-function cleanAIJsonText(value: string): string {
-    let cleaned = String(value || "").trim();
-
-    cleaned = cleaned.replace(
-        /^```(?:json)?\s*/i,
-        ""
-    );
-
-    cleaned = cleaned.replace(
-        /\s*```$/i,
-        ""
-    );
-
-    return cleaned.trim();
-}
-
-
-function parseEmbeddedAIJson(value: string): any | null {
-    const cleaned = cleanAIJsonText(value);
-
-    if (!cleaned) {
-        return null;
-    }
-
-    // First try the complete response directly
-    try {
-        return JSON.parse(cleaned);
-    } catch {
-        // Continue and search for embedded JSON
-    }
-
-    const starts = ["{", "["];
-
-    for (const startChar of starts) {
-        const start = cleaned.indexOf(startChar);
-
-        if (start < 0) {
-            continue;
-        }
-
-        let depth = 0;
-        let inString = false;
-        let escaped = false;
-
-        for (let i = start; i < cleaned.length; i++) {
-            const ch = cleaned[i];
-
-            if (inString) {
-                if (escaped) {
-                    escaped = false;
-                } else if (ch === "\\") {
-                    escaped = true;
-                } else if (ch === '"') {
-                    inString = false;
-                }
-
-                continue;
-            }
-
-            if (ch === '"') {
-                inString = true;
-                continue;
-            }
-
-            if (ch === "{" || ch === "[") {
-                depth++;
-            } else if (ch === "}" || ch === "]") {
-                depth--;
-
-                if (depth === 0) {
-                    const candidate =
-                        cleaned.slice(start, i + 1);
-
-                    try {
-                        return JSON.parse(candidate);
-                    } catch {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    return null;
-}
-
-
-function normalizeAuditJson(outputText: string): any {
-    const direct =
-        parseEmbeddedAIJson(outputText);
-
-    if (direct) {
-
-        if (
-            direct.audit &&
-            typeof direct.audit === "object"
-        ) {
-            return direct.audit;
-        }
-
-        if (
-            direct.result &&
-            typeof direct.result === "object"
-        ) {
-            return direct.result;
-        }
-
-        return direct;
-    }
-
-    return {
-        summary: {
-            overall_observations:
-                outputText
-                    ? [outputText]
-                    : [],
-
-            critical_issues: [],
-            warnings: [],
-            positive_signals: []
-        },
-
-        technical_seo: [],
-        on_page_seo: [],
-        content: [],
-        prioritized_actions: []
-    };
-}
-
-
-function normalizeStringArray(value: any): string[] {
-    if (!Array.isArray(value)) {
-        return [];
-    }
-
-    return value
-        .map(item =>
-            typeof item === "string"
-                ? item
-                : String(item ?? "")
-        )
-        .filter(Boolean);
-}
-
-
-function normalizeAuditShape(audit: any): any {
-
-    const source =
-        audit &&
-        typeof audit === "object"
-            ? audit
-            : {};
-
-    const summary =
-        source.summary &&
-        typeof source.summary === "object"
-            ? source.summary
-            : {};
-
-    return {
-        summary: {
-            overall_observations:
-                normalizeStringArray(
-                    summary.overall_observations
-                ),
-
-            critical_issues:
-                normalizeStringArray(
-                    summary.critical_issues
-                ),
-
-            warnings:
-                normalizeStringArray(
-                    summary.warnings
-                ),
-
-            positive_signals:
-                normalizeStringArray(
-                    summary.positive_signals
-                )
-        },
-
-        technical_seo:
-            Array.isArray(source.technical_seo)
-                ? source.technical_seo
-                : [],
-
-        on_page_seo:
-            Array.isArray(source.on_page_seo)
-                ? source.on_page_seo
-                : [],
-
-        content:
-            Array.isArray(source.content)
-                ? source.content
-                : [],
-
-        prioritized_actions:
-            Array.isArray(source.prioritized_actions)
-                ? source.prioritized_actions
-                : []
-    };
-}
-
-
 import {
     userFrom,
     userClient
@@ -892,7 +687,7 @@ async function gemini(
     }
 
     const model =
-        "gemini-3.6-flash";
+        "rule_based_seo_engine";
 
     const endpoint =
         "https://generativelanguage.googleapis.com/v1beta/interactions";
@@ -1119,9 +914,7 @@ Deno.serve(
         }
 
 
-        const provider =
-            body.provider ||
-            "gemini";
+        const provider = "rule_based";
 
         const agent =
             body.agent ||
@@ -1435,323 +1228,303 @@ Deno.serve(
 
 
         /* =================================================
-           AI PROMPT
+           RULE-BASED REPORT ENGINE
         ================================================= */
 
-        const task =
-            body.task ||
-            "Perform a technical SEO audit.";
+        const a = pageAnalysis;
+        const technical_seo: any[] = [];
+        const on_page_seo: any[] = [];
+        const content: any[] = [];
+        const critical_issues: string[] = [];
+        const warnings: string[] = [];
+        const positive_signals: string[] = [];
+        const prioritized_actions: any[] = [];
 
+        const add = (
+            bucket: any[],
+            issueText: string,
+            severity: string,
+            evidence: string,
+            recommendation: string
+        ) => bucket.push({ issue: issueText, severity, evidence, recommendation });
 
-        const prompt = `
-
-You are an Obsedian.Space SEO auditor.
-
-Analyze ONLY the evidence provided below.
-
-Never invent:
-- traffic
-- rankings
-- conversions
-- backlinks
-- Google Search Console data
-- Google Analytics data
-- Core Web Vitals
-- indexed pages
-
-If information is unavailable, explicitly say:
-"Not available from this crawl."
-
-Return VALID JSON ONLY.
-
-Use this structure:
-
-{
-  "summary": {
-    "overall_observations": [],
-    "critical_issues": [],
-    "warnings": [],
-    "positive_signals": []
-  },
-
-  "technical_seo": [
-    {
-      "issue": "",
-      "severity": "critical|high|medium|low|info",
-      "evidence": "",
-      "recommendation": ""
-    }
-  ],
-
-  "on_page_seo": [
-    {
-      "issue": "",
-      "severity": "critical|high|medium|low|info",
-      "evidence": "",
-      "recommendation": ""
-    }
-  ],
-
-  "content": [
-    {
-      "issue": "",
-      "severity": "critical|high|medium|low|info",
-      "evidence": "",
-      "recommendation": ""
-    }
-  ],
-
-  "prioritized_actions": [
-    {
-      "priority": 1,
-      "action": "",
-      "reason": ""
-    }
-  ]
-}
-
-Task:
-
-${task}
-
-Website evidence:
-
-${JSON.stringify(
-    crawl,
-    null,
-    2
-)}
-
-`;
-
-
-        /* =================================================
-           OPENAI
-        ================================================= */
-
-        let aiResult: any;
-
-
-        try {
-
-            if (
-                provider !==
-                "gemini"
-            ) {
-
-                return json(
-                    {
-                        error:
-                            "Only Gemini is currently enabled."
-                    },
-                    400
-                );
+        if (!page.fetched) {
+            critical_issues.push("Homepage could not be fetched.");
+            add(technical_seo, "Homepage unavailable", "critical", `HTTP status ${page.status}`, "Verify the URL, hosting and server availability.");
+            prioritized_actions.push({priority:1, action:"Fix homepage availability", reason:"The crawler could not successfully fetch the homepage."});
+        } else {
+            if (!a?.title?.exists) {
+                critical_issues.push("Page title is missing.");
+                add(on_page_seo, "Missing title", "high", "No <title> element detected.", "Add a unique, descriptive page title.");
+                prioritized_actions.push({priority:1, action:"Add a unique page title", reason:"The homepage has no detectable title."});
+            } else if (a.title.length < 30 || a.title.length > 60) {
+                warnings.push(`Title length is ${a.title.length} characters.`);
+                add(on_page_seo, "Review title length", "medium", `${a.title.length} characters detected.`, "Review the title for concise, descriptive wording.");
+            } else {
+                positive_signals.push("A page title is present and within a commonly used length range.");
             }
 
+            if (!a?.meta_description?.exists) {
+                warnings.push("Meta description is missing.");
+                add(on_page_seo, "Missing meta description", "high", "No meta description detected.", "Add a unique meta description.");
+                prioritized_actions.push({priority:2, action:"Add a meta description", reason:"The homepage has no detectable meta description."});
+            } else if (a.meta_description.length < 70 || a.meta_description.length > 160) {
+                warnings.push(`Meta description length is ${a.meta_description.length} characters.`);
+                add(on_page_seo, "Review meta description length", "medium", `${a.meta_description.length} characters detected.`, "Review it for concise search-result wording.");
+            } else {
+                positive_signals.push("A meta description is present.");
+            }
 
-            aiResult =
-                await gemini(
-                    prompt
-                );
+            if (!a?.canonical?.exists) {
+                warnings.push("Canonical URL is missing.");
+                add(technical_seo, "Missing canonical URL", "medium", "No canonical link detected.", "Add a canonical URL where appropriate.");
+                prioritized_actions.push({priority:3, action:"Add a canonical URL", reason:"A canonical URL communicates the preferred page URL."});
+            } else positive_signals.push("Canonical URL detected.");
 
-        } catch (error) {
+            if (a.headings.h1 === 0) {
+                warnings.push("No H1 heading detected.");
+                add(on_page_seo, "Missing H1", "medium", "No H1 element detected.", "Add one clear primary H1 heading.");
+            } else if (a.headings.h1 > 1) {
+                warnings.push(`Multiple H1 headings detected (${a.headings.h1}).`);
+                add(on_page_seo, "Multiple H1 headings", "low", `${a.headings.h1} H1 elements detected.`, "Review the heading hierarchy.");
+            } else positive_signals.push("Exactly one H1 heading detected.");
 
-            console.error(
-                "OpenAI error:",
-                error
-            );
+            if (a.images.missing_alt > 0) {
+                warnings.push(`${a.images.missing_alt} image(s) are missing ALT text.`);
+                add(on_page_seo, "Images missing ALT text", "medium", `${a.images.missing_alt} of ${a.images.total} images lack ALT text.`, "Add meaningful ALT text to informative images.");
+                prioritized_actions.push({priority:4, action:"Add missing image ALT text", reason:`${a.images.missing_alt} images lack ALT text.`});
+            } else positive_signals.push("All detected images have ALT attributes.");
 
-            return json(
-                {
-                    error:
-                        "AI provider request failed.",
+            if (!a.technical.https) {
+                critical_issues.push("HTTPS was not detected.");
+                add(technical_seo, "HTTPS not detected", "critical", "Requested URL does not use HTTPS.", "Use HTTPS for the website.");
+                prioritized_actions.push({priority:1, action:"Enable HTTPS", reason:"Secure delivery is a fundamental website requirement."});
+            } else positive_signals.push("HTTPS is enabled.");
 
-                    details:
-                        error instanceof Error
-                            ? error.message
-                            : String(error)
+            if (!a.technical.viewport) {
+                warnings.push("Responsive viewport metadata is missing.");
+                add(technical_seo, "Missing viewport", "medium", "Viewport meta tag was not detected.", "Add a responsive viewport meta tag.");
+            } else positive_signals.push("Responsive viewport metadata detected.");
 
-                },
-                502
-            );
+            if (!a.technical.charset) {
+                warnings.push("Character encoding declaration was not detected.");
+                add(technical_seo, "Missing charset", "low", "No charset declaration detected.", "Declare UTF-8 character encoding.");
+            }
+
+            if (a.technical.noindex) {
+                critical_issues.push("A noindex directive was detected.");
+                add(technical_seo, "Noindex directive", "critical", "A robots noindex directive was detected.", "Confirm that noindex is intentional.");
+                prioritized_actions.push({priority:1, action:"Review noindex directive", reason:"The crawler detected a directive that can prevent indexing."});
+            }
+
+            if (!crawl.robots.exists) {
+                warnings.push("robots.txt was not found.");
+                add(technical_seo, "robots.txt missing", "medium", "The crawler could not find /robots.txt.", "Add robots.txt if appropriate.");
+            } else positive_signals.push("robots.txt detected.");
+
+            if (!crawl.sitemap.exists) {
+                warnings.push("sitemap.xml was not found.");
+                add(technical_seo, "XML sitemap missing", "medium", "The crawler could not find /sitemap.xml.", "Create or expose an XML sitemap.");
+            } else positive_signals.push("XML sitemap detected.");
+
+            if (a.technical.structured_data_blocks === 0) {
+                warnings.push("No JSON-LD structured data was detected.");
+                add(content, "No JSON-LD detected", "low", "No application/ld+json block found on the homepage.", "Consider relevant structured data where appropriate.");
+            } else positive_signals.push(`${a.technical.structured_data_blocks} JSON-LD block(s) detected.`);
+
+            if (a.content.word_count < 300) {
+                warnings.push(`Homepage text content is relatively short (${a.content.word_count} words).`);
+                add(content, "Short visible text content", "medium", `${a.content.word_count} words detected.`, "Review whether the page sufficiently communicates its purpose.");
+            } else positive_signals.push(`Homepage contains approximately ${a.content.word_count} words of visible text.`);
+
+            if (page.response_time_ms > 2000) {
+                warnings.push(`Homepage response time is ${page.response_time_ms} ms.`);
+                add(technical_seo, "Slow server response", "medium", `${page.response_time_ms} ms measured.`, "Investigate hosting, caching and server response performance.");
+            }
         }
 
+        const score = Math.max(
+            0,
+            Math.min(
+                100,
+                100 - (critical_issues.length * 15) - (warnings.length * 5)
+            )
+        );
 
-        /* =================================================
-           EXTRACT RESULT
-        ================================================= */
+        const auditJson: any = {
+            summary: {
+                overall_observations: [
+                    `Crawled ${crawl.website.final_url || websiteUrl}.`,
+                    `Homepage HTTP status: ${crawl.homepage.status}.`,
+                    `Measured response time: ${crawl.homepage.response_time_ms} ms.`
+                ],
+                critical_issues,
+                warnings,
+                positive_signals
+            },
+            technical_seo,
+            on_page_seo,
+            content,
+            prioritized_actions,
+            detailed_metrics: {
+                title: a?.title?.value || null,
+                title_length: a?.title?.length || 0,
+                meta_description: a?.meta_description?.value || null,
+                meta_description_length: a?.meta_description?.length || 0,
+                canonical: a?.canonical?.value || null,
+                h1_count: a?.headings?.h1 || 0,
+                h2_count: a?.headings?.h2 || 0,
+                h3_count: a?.headings?.h3 || 0,
+                image_count: a?.images?.total || 0,
+                images_missing_alt: a?.images?.missing_alt || 0,
+                internal_links: a?.links?.total || 0,
+                word_count: a?.content?.word_count || 0,
+                https: a?.technical?.https || false,
+                viewport: a?.technical?.viewport || false,
+                charset: a?.technical?.charset || false,
+                noindex: a?.technical?.noindex || false,
+                structured_data_blocks: a?.technical?.structured_data_blocks || 0,
+                response_time_ms: page.response_time_ms,
+                robots_exists: crawl.robots.exists,
+                sitemap_exists: crawl.sitemap.exists
+            }
+        };
 
-        const outputText =
-            extractGeminiText(
-                aiResult
-            );
+        if (agent === "seo_strategist") {
+            auditJson.strategy = {
+                current_situation: auditJson.summary.overall_observations,
+                days_30: prioritized_actions.slice(0, 6).map((x: any) => x.action).concat(
+                    prioritized_actions.length ? [] : ["Establish the current technical SEO baseline."]
+                ),
+                days_60: [
+                    "Review metadata, heading hierarchy, canonical URLs and internal linking across important pages.",
+                    "Improve content quality on pages identified during subsequent crawls."
+                ],
+                days_90: [
+                    "Review structured data opportunities relevant to the website.",
+                    "Re-crawl the website and compare the new baseline with this report."
+                ],
+                content_strategy: [
+                    "Improve pages with thin or unclear visible content where appropriate.",
+                    "Use descriptive titles, metadata and headings consistently."
+                ],
+                priority_actions: prioritized_actions
+            };
+        }
 
+        if (agent === "weekly_report") {
+            auditJson.weekly_report = {
+                http_status: crawl.homepage.status,
+                response_time_ms: page.response_time_ms,
+                open_issues: critical_issues.length + warnings.length,
+                current_health: [
+                    `Current crawl score: ${score}/100.`,
+                    crawl.robots.exists ? "robots.txt detected." : "robots.txt not detected.",
+                    crawl.sitemap.exists ? "sitemap.xml detected." : "sitemap.xml not detected."
+                ],
+                issues_to_watch: [...critical_issues, ...warnings],
+                next_actions: prioritized_actions.slice(0, 5)
+            };
+        }
 
-        const auditJson =
-            normalizeAuditShape(
-                normalizeAuditJson(
-                    outputText
-                )
-            );
-
+        let aiResult: any = {
+            provider: "rule_based",
+            model: "rule_based_seo_engine",
+            mode: "crawl_only",
+            agent
+        };
 
         /* =================================================
            CALCULATE SCORE
         ================================================= */
 
-        let score = 100;
-
-
-        const criticalCount =
-            (
-                auditJson
-                    ?.summary
-                    ?.critical_issues ||
-                []
-            ).length;
-
-
-        const warningCount =
-            (
-                auditJson
-                    ?.summary
-                    ?.warnings ||
-                []
-            ).length;
-
-
-        const highCount =
-            [
-                ...(Array.isArray(
-                    auditJson
-                        ?.technical_seo
-                )
-                    ? auditJson
-                        .technical_seo
-                    : []),
-
-                ...(Array.isArray(
-                    auditJson
-                        ?.on_page_seo
-                )
-                    ? auditJson
-                        .on_page_seo
-                    : []),
-
-                ...(Array.isArray(
-                    auditJson
-                        ?.content
-                )
-                    ? auditJson
-                        .content
-                    : [])
-            ]
-                .filter(
-                    (item: any) =>
-                        item?.severity ===
-                        "high"
-                ).length;
-
-
-        score -=
-            criticalCount *
-            15;
-
-
-        score -=
-            warningCount *
-            5;
-
-
-        // High-severity issues that were not
-        // duplicated in summary.critical_issues
-        // still affect the audit score.
-        score -=
-            highCount *
-            5;
-
-
-        score =
-            Math.max(
-                0,
-                Math.min(
-                    100,
-                    score
-                )
-            );
 
 
         /* =================================================
            SAVE AUDIT
         ================================================= */
 
-       const auditId = crypto.randomUUID();
+        const {
+            data:
+                auditRecord,
 
-const { error: auditError } =
-    await sb
-        .from("audits")
-        .insert({
-            id: auditId,
-
-            website_id:
-                body.website_id,
-
-            user_id:
-                user.id,
-
-            score,
-
-            technical:
-                auditJson.technical_seo || [],
-
-            seo:
-                auditJson.on_page_seo || [],
-
-            content:
-                auditJson.content || [],
-
-            performance: {
-                response_time_ms:
-                    page.response_time_ms,
-
-                https:
-                    pageAnalysis
-                        ?.technical
-                        ?.https || false
-            },
-
-            research: {},
-
-            evidence: {
-                crawl,
-
-                source:
-                    "website_crawler",
-
-                generated_at:
-                    new Date().toISOString()
-            }
-        });
-
-if (auditError) {
-    console.error(
-        "audits insert error:",
-        auditError
-    );
-
-    return json(
-        {
             error:
-                "Audit could not be saved.",
+                auditError
 
-            details:
-                auditError.message
-        },
-        500
-    );
-}
+        } =
+            await sb
+                .from(
+                    "audits"
+                )
+                .insert({
 
-                   
+                    website_id:
+                        body.website_id,
+
+                    user_id:
+                        user.id,
+
+                    score,
+
+                    technical:
+                        auditJson
+                            .technical_seo ||
+                        [],
+
+                    seo:
+                        auditJson
+                            .on_page_seo ||
+                        [],
+
+                    content:
+                        auditJson
+                            .content ||
+                        [],
+
+                    performance:
+                        {
+
+                            response_time_ms:
+                                page.response_time_ms,
+
+                            https:
+                                pageAnalysis
+                                    ?.technical
+                                    ?.https ||
+                                false
+
+                        },
+
+                    research:
+                        {},
+
+                    evidence:
+                        {
+
+                            crawl,
+
+                            source:
+                                "website_crawler",
+
+                            generated_at:
+                                new Date()
+                                    .toISOString()
+
+                        }
+
+                })
+                .select()
+                .single();
+
+
+        if (auditError) {
+
+            console.error(
+                "audits insert error:",
+                auditError
+            );
+        }
+
 
         /* =================================================
            SAVE RECOMMENDATIONS
@@ -1918,7 +1691,7 @@ if (auditError) {
                     provider,
 
                     model:
-                        "gemini-3.6-flash",
+                        "rule_based_seo_engine",
 
                     status:
                         "completed",
