@@ -32,10 +32,10 @@ Deno.serve(async (req) => {
 
 
     /* =====================================================
-       GET ONLY
+       REQUEST METHOD
     ===================================================== */
 
-    if (req.method !== "GET") {
+    if (!["GET", "POST"].includes(req.method)) {
         return json(
             {
                 error: "Method not allowed"
@@ -176,6 +176,282 @@ Deno.serve(async (req) => {
         )
             .trim()
             .toLowerCase();
+
+
+    /* =====================================================
+       SETTINGS WRITE
+    ===================================================== */
+
+    if (req.method === "POST") {
+
+        if (section !== "settings") {
+            return json(
+                {
+                    error: "POST is only supported for settings."
+                },
+                405
+            );
+        }
+
+        let body: any;
+
+        try {
+            body = await req.json();
+        } catch (_error) {
+            return json(
+                {
+                    error: "Invalid JSON request body."
+                },
+                400
+            );
+        }
+
+        if (body?.action !== "update_branding") {
+            return json(
+                {
+                    error: "Unsupported settings action."
+                },
+                400
+            );
+        }
+
+        const incoming =
+            body?.branding &&
+            typeof body.branding === "object"
+                ? body.branding
+                : {};
+
+        const {
+            data: existingSetting,
+            error: existingError
+        } = await sb
+            .from("settings")
+            .select("value")
+            .eq("key", "branding")
+            .maybeSingle();
+
+        if (existingError) {
+            return json(
+                {
+                    error: "Unable to read current branding settings.",
+                    details: existingError.message
+                },
+                500
+            );
+        }
+
+        const existing =
+            existingSetting?.value &&
+            typeof existingSetting.value === "object"
+                ? existingSetting.value
+                : {};
+
+        const branding = {
+            ...existing,
+            brand_name:
+                String(incoming.brand_name ?? existing.brand_name ?? "Obsedian.Space")
+                    .trim()
+                    .slice(0, 120),
+            logo_url:
+                String(incoming.logo_url ?? existing.logo_url ?? "")
+                    .trim()
+                    .slice(0, 2000),
+            primary_color:
+                String(incoming.primary_color ?? existing.primary_color ?? "#7c3aed")
+                    .trim(),
+            accent_color:
+                String(incoming.accent_color ?? existing.accent_color ?? "#f59e0b")
+                    .trim(),
+            support_email:
+                String(incoming.support_email ?? existing.support_email ?? "")
+                    .trim()
+                    .slice(0, 320)
+        };
+
+        const hexColor = /^#[0-9a-fA-F]{6}$/;
+
+        if (!hexColor.test(branding.primary_color)) {
+            return json(
+                { error: "Primary color must be a valid 6-digit hex color." },
+                400
+            );
+        }
+
+        if (!hexColor.test(branding.accent_color)) {
+            return json(
+                { error: "Accent color must be a valid 6-digit hex color." },
+                400
+            );
+        }
+
+        if (branding.support_email &&
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(branding.support_email)) {
+            return json(
+                { error: "Please enter a valid support email address." },
+                400
+            );
+        }
+
+        /* -----------------------------------------------------
+           Optional logo upload
+        ----------------------------------------------------- */
+
+        const logoDataUrl =
+            typeof body?.logo_data_url === "string"
+                ? body.logo_data_url
+                : "";
+
+        if (logoDataUrl) {
+
+            const match = logoDataUrl.match(
+                /^data:(image\/(?:png|jpeg|jpg|webp|svg\+xml));base64,(.+)$/i
+            );
+
+            if (!match) {
+                return json(
+                    {
+                        error:
+                            "Unsupported logo format. Use PNG, JPG, WEBP or SVG."
+                    },
+                    400
+                );
+            }
+
+            const contentType = match[1].toLowerCase();
+            const base64 = match[2];
+
+            let binary: Uint8Array;
+
+            try {
+                const decoded = atob(base64);
+                binary = new Uint8Array(decoded.length);
+
+                for (let i = 0; i < decoded.length; i++) {
+                    binary[i] = decoded.charCodeAt(i);
+                }
+            } catch (_error) {
+                return json(
+                    { error: "Unable to decode the uploaded logo." },
+                    400
+                );
+            }
+
+            if (binary.byteLength > 3 * 1024 * 1024) {
+                return json(
+                    { error: "Logo must be 3 MB or smaller." },
+                    400
+                );
+            }
+
+            const extension =
+                contentType === "image/svg+xml"
+                    ? "svg"
+                    : contentType === "image/jpeg" || contentType === "image/jpg"
+                        ? "jpg"
+                        : contentType.split("/")[1];
+
+            const path =
+                `logos/${crypto.randomUUID()}.${extension}`;
+
+            /* Ensure the public branding bucket exists. */
+            try {
+                const { data: existingBucket } =
+                    await sb.storage.getBucket("branding");
+
+                if (!existingBucket) {
+                    await sb.storage.createBucket(
+                        "branding",
+                        { public: true }
+                    );
+                }
+            } catch (bucketError) {
+                console.warn(
+                    "Branding bucket check/create warning:",
+                    bucketError
+                );
+            }
+
+            const storage =
+                sb.storage.from("branding");
+
+            const { error: uploadError } =
+                await storage.upload(
+                    path,
+                    binary,
+                    {
+                        contentType,
+                        upsert: true,
+                        cacheControl: "3600"
+                    }
+                );
+
+            if (uploadError) {
+                console.error(
+                    "Branding logo upload error:",
+                    uploadError
+                );
+
+                return json(
+                    {
+                        error:
+                            "Unable to upload the logo. Make sure the Supabase Storage bucket 'branding' exists and is public.",
+                        details:
+                            uploadError.message
+                    },
+                    500
+                );
+            }
+
+            const {
+                data: publicUrlData
+            } = storage.getPublicUrl(path);
+
+            branding.logo_url =
+                publicUrlData.publicUrl;
+        }
+
+        const {
+            data: saved,
+            error: saveError
+        } = await sb
+            .from("settings")
+            .upsert(
+                {
+                    key: "branding",
+                    value: branding,
+                    updated_at: new Date().toISOString()
+                },
+                {
+                    onConflict: "key"
+                }
+            )
+            .select("key,value,updated_at")
+            .single();
+
+        if (saveError) {
+            console.error(
+                "Branding save error:",
+                saveError
+            );
+
+            return json(
+                {
+                    error: "Unable to save branding settings.",
+                    details: saveError.message
+                },
+                500
+            );
+        }
+
+        return json(
+            {
+                success: true,
+                section: "settings",
+                message: "Branding settings saved successfully.",
+                setting: saved
+            }
+        );
+    }
 
 
     /* =====================================================
@@ -1171,11 +1447,11 @@ Deno.serve(async (req) => {
             error
         } = await sb
             .from("settings")
-            .select("*")
+            .select("key,value,updated_at")
             .order(
-                "created_at",
+                "key",
                 {
-                    ascending: false
+                    ascending: true
                 }
             );
 

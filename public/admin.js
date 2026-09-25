@@ -1790,7 +1790,20 @@ function renderAuditHtml(
 
 
 /* =========================================================
-   SETTINGS
+   SETTINGS / BRANDING
+========================================================= */
+
+let currentBrandingSettings = {
+    brand_name: "Obsedian.Space",
+    logo_url: "",
+    primary_color: "#7c3aed",
+    accent_color: "#f59e0b",
+    support_email: ""
+};
+
+
+/* =========================================================
+   LOAD SETTINGS
 ========================================================= */
 
 async function loadSettings() {
@@ -1799,7 +1812,7 @@ async function loadSettings() {
         "Settings";
 
     showLoading(
-        "Loading settings..."
+        "Loading branding settings..."
     );
 
     const data =
@@ -1812,172 +1825,1258 @@ async function loadSettings() {
         data?.data ||
         [];
 
+    let branding = null;
+
+    if (Array.isArray(settings)) {
+
+        const brandingRecord =
+            settings.find(
+                item =>
+                    item &&
+                    item.key ===
+                        "branding"
+            );
+
+        branding =
+            brandingRecord?.value ||
+            null;
+
+    } else if (
+        settings &&
+        typeof settings === "object"
+    ) {
+
+        branding =
+            settings.branding ||
+            settings;
+
+    }
+
+    if (
+        !branding ||
+        typeof branding !== "object"
+    ) {
+        branding = {};
+    }
+
+
+    currentBrandingSettings = {
+
+        brand_name:
+            branding.brand_name ||
+            "Obsedian.Space",
+
+        logo_url:
+            branding.logo_url ||
+            "",
+
+        primary_color:
+            branding.primary_color ||
+            "#7c3aed",
+
+        accent_color:
+            branding.accent_color ||
+            "#f59e0b",
+
+        support_email:
+            branding.support_email ||
+            ""
+    };
+
+
+    renderBrandingSettings(
+        currentBrandingSettings
+    );
+}
+
+
+/* =========================================================
+   RENDER BRANDING SETTINGS
+========================================================= */
+
+function renderBrandingSettings(
+    branding
+) {
+
+    const logoUrl =
+        branding.logo_url ||
+        "";
+
+    const primaryColor =
+        /^#[0-9a-f]{6}$/i.test(
+            branding.primary_color
+        )
+            ? branding.primary_color
+            : "#7c3aed";
+
+    const accentColor =
+        /^#[0-9a-f]{6}$/i.test(
+            branding.accent_color
+        )
+            ? branding.accent_color
+            : "#f59e0b";
+
+
     $("content").innerHTML = `
 
         <div class="card">
 
             <h2>
-                System Settings
+                Branding Settings
             </h2>
 
             <p>
-                ${Array.isArray(settings)
-                    ? settings.length
-                    : Object.keys(settings || {}).length
-                }
-                setting record(s).
+                Manage your Obsedian.Space
+                brand name, logo, colors and
+                support email.
             </p>
 
         </div>
 
+
         <div class="card">
 
-            ${renderSettingsHtml(settings)}
+            <form
+                id="brandingForm"
+                autocomplete="off"
+            >
+
+                <!-- BRAND NAME -->
+
+                <div
+                    style="
+                        margin-bottom:20px;
+                    "
+                >
+
+                    <label
+                        for="brandName"
+                        style="
+                            display:block;
+                            font-weight:600;
+                            margin-bottom:7px;
+                        "
+                    >
+                        Brand Name
+                    </label>
+
+                    <input
+                        id="brandName"
+                        type="text"
+                        value="${escapeHtml(
+                            branding.brand_name
+                        )}"
+                        placeholder="Obsedian.Space"
+                        maxlength="100"
+                        style="
+                            width:100%;
+                            max-width:650px;
+                            padding:12px;
+                            border:1px solid #d1d5db;
+                            border-radius:8px;
+                            box-sizing:border-box;
+                        "
+                    >
+
+                </div>
+
+
+                <!-- LOGO -->
+
+                <div
+                    style="
+                        margin-bottom:20px;
+                    "
+                >
+
+                    <label
+                        style="
+                            display:block;
+                            font-weight:600;
+                            margin-bottom:10px;
+                        "
+                    >
+                        Logo
+                    </label>
+
+
+                    <div
+                        id="logoPreviewBox"
+                        style="
+                            width:220px;
+                            min-height:120px;
+                            border:1px dashed #d1d5db;
+                            border-radius:10px;
+                            display:flex;
+                            align-items:center;
+                            justify-content:center;
+                            padding:15px;
+                            background:#f9fafb;
+                            margin-bottom:12px;
+                            box-sizing:border-box;
+                        "
+                    >
+
+                        ${
+                            logoUrl
+                                ? `
+                                    <img
+                                        id="logoPreview"
+                                        src="${escapeHtml(
+                                            logoUrl
+                                        )}"
+                                        alt="Logo preview"
+                                        style="
+                                            max-width:190px;
+                                            max-height:90px;
+                                            object-fit:contain;
+                                        "
+                                        onerror="
+                                            this.style.display='none';
+                                            document.getElementById('logoPreviewEmpty').style.display='block';
+                                        "
+                                    >
+
+                                    <span
+                                        id="logoPreviewEmpty"
+                                        style="
+                                            display:none;
+                                            color:#6b7280;
+                                        "
+                                    >
+                                        Logo preview unavailable
+                                    </span>
+                                `
+                                : `
+                                    <span
+                                        style="
+                                            color:#6b7280;
+                                        "
+                                    >
+                                        No logo selected
+                                    </span>
+                                `
+                        }
+
+                    </div>
+
+
+                    <div
+                        style="
+                            display:flex;
+                            gap:10px;
+                            flex-wrap:wrap;
+                        "
+                    >
+
+                        <label
+                            for="logoFile"
+                            style="
+                                display:inline-flex;
+                                align-items:center;
+                                justify-content:center;
+                                padding:10px 16px;
+                                border-radius:8px;
+                                background:#7c3aed;
+                                color:#fff;
+                                cursor:pointer;
+                                font-weight:600;
+                            "
+                        >
+                            Select Logo
+                        </label>
+
+                        <input
+                            id="logoFile"
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                            style="display:none"
+                        >
+
+                        <button
+                            type="button"
+                            id="removeLogo"
+                        >
+                            Remove Logo
+                        </button>
+
+                    </div>
+
+
+                    <small
+                        style="
+                            display:block;
+                            margin-top:8px;
+                            color:#6b7280;
+                        "
+                    >
+                        PNG, JPG, WEBP or SVG.
+                        Maximum 3 MB.
+                    </small>
+
+                </div>
+
+
+                <!-- LOGO URL -->
+
+                <div
+                    style="
+                        margin-bottom:20px;
+                    "
+                >
+
+                    <label
+                        for="logoUrl"
+                        style="
+                            display:block;
+                            font-weight:600;
+                            margin-bottom:7px;
+                        "
+                    >
+                        Logo URL
+                    </label>
+
+                    <input
+                        id="logoUrl"
+                        type="url"
+                        value="${escapeHtml(
+                            logoUrl
+                        )}"
+                        placeholder="https://..."
+                        style="
+                            width:100%;
+                            max-width:650px;
+                            padding:12px;
+                            border:1px solid #d1d5db;
+                            border-radius:8px;
+                            box-sizing:border-box;
+                        "
+                    >
+
+                    <small
+                        style="
+                            display:block;
+                            margin-top:6px;
+                            color:#6b7280;
+                        "
+                    >
+                        You can also enter an existing
+                        public logo URL manually.
+                    </small>
+
+                </div>
+
+
+                <!-- PRIMARY COLOR -->
+
+                <div
+                    style="
+                        margin-bottom:20px;
+                    "
+                >
+
+                    <label
+                        style="
+                            display:block;
+                            font-weight:600;
+                            margin-bottom:7px;
+                        "
+                    >
+                        Primary Color
+                    </label>
+
+
+                    <div
+                        style="
+                            display:flex;
+                            align-items:center;
+                            gap:10px;
+                            flex-wrap:wrap;
+                        "
+                    >
+
+                        <input
+                            id="primaryColorPicker"
+                            type="color"
+                            value="${primaryColor}"
+                            style="
+                                width:55px;
+                                height:42px;
+                                padding:2px;
+                                cursor:pointer;
+                            "
+                        >
+
+                        <input
+                            id="primaryColor"
+                            type="text"
+                            value="${escapeHtml(
+                                primaryColor
+                            )}"
+                            maxlength="7"
+                            placeholder="#7c3aed"
+                            style="
+                                width:140px;
+                                padding:10px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                            "
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <!-- ACCENT COLOR -->
+
+                <div
+                    style="
+                        margin-bottom:20px;
+                    "
+                >
+
+                    <label
+                        style="
+                            display:block;
+                            font-weight:600;
+                            margin-bottom:7px;
+                        "
+                    >
+                        Accent Color
+                    </label>
+
+
+                    <div
+                        style="
+                            display:flex;
+                            align-items:center;
+                            gap:10px;
+                            flex-wrap:wrap;
+                        "
+                    >
+
+                        <input
+                            id="accentColorPicker"
+                            type="color"
+                            value="${accentColor}"
+                            style="
+                                width:55px;
+                                height:42px;
+                                padding:2px;
+                                cursor:pointer;
+                            "
+                        >
+
+                        <input
+                            id="accentColor"
+                            type="text"
+                            value="${escapeHtml(
+                                accentColor
+                            )}"
+                            maxlength="7"
+                            placeholder="#f59e0b"
+                            style="
+                                width:140px;
+                                padding:10px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                            "
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <!-- SUPPORT EMAIL -->
+
+                <div
+                    style="
+                        margin-bottom:24px;
+                    "
+                >
+
+                    <label
+                        for="supportEmail"
+                        style="
+                            display:block;
+                            font-weight:600;
+                            margin-bottom:7px;
+                        "
+                    >
+                        Support Email
+                    </label>
+
+                    <input
+                        id="supportEmail"
+                        type="email"
+                        value="${escapeHtml(
+                            branding.support_email
+                        )}"
+                        placeholder="support@example.com"
+                        style="
+                            width:100%;
+                            max-width:650px;
+                            padding:12px;
+                            border:1px solid #d1d5db;
+                            border-radius:8px;
+                            box-sizing:border-box;
+                        "
+                    >
+
+                </div>
+
+
+                <!-- ACTIONS -->
+
+                <div
+                    style="
+                        display:flex;
+                        gap:10px;
+                        flex-wrap:wrap;
+                        align-items:center;
+                    "
+                >
+
+                    <button
+                        type="submit"
+                        id="saveBranding"
+                    >
+                        Save Branding Settings
+                    </button>
+
+                    <button
+                        type="button"
+                        id="reloadBranding"
+                    >
+                        Reload
+                    </button>
+
+                    <span
+                        id="brandingMessage"
+                        style="
+                            display:none;
+                            font-weight:600;
+                        "
+                    ></span>
+
+                </div>
+
+            </form>
 
         </div>
+
     `;
+
+
+    bindBrandingEvents();
 }
 
 
 /* =========================================================
-   RENDER SETTINGS
+   BRANDING EVENTS
 ========================================================= */
 
-function renderSettingsHtml(
-    settings
-) {
+function bindBrandingEvents() {
 
-    if (
-        !settings ||
-        (
-            Array.isArray(settings) &&
-            !settings.length
-        ) ||
-        (
-            !Array.isArray(settings) &&
-            !Object.keys(settings).length
-        )
-    ) {
+    const form =
+        $("brandingForm");
 
-        return `
-            <div class="empty">
-                No settings found.
-            </div>
-        `;
-    }
+    const logoFile =
+        $("logoFile");
 
-    if (Array.isArray(settings)) {
+    const logoUrl =
+        $("logoUrl");
 
-        return `
+    const removeLogo =
+        $("removeLogo");
 
-            <div class="admin-table-wrapper">
+    const reloadBranding =
+        $("reloadBranding");
 
-                <table class="admin-table">
+    const primaryPicker =
+        $("primaryColorPicker");
 
-                    <thead>
+    const primaryInput =
+        $("primaryColor");
 
-                        <tr>
-                            <th>Key</th>
-                            <th>Value</th>
-                            <th>Updated</th>
-                        </tr>
+    const accentPicker =
+        $("accentColorPicker");
 
-                    </thead>
+    const accentInput =
+        $("accentColor");
 
-                    <tbody>
 
-                        ${settings
-                            .map(
-                                setting => `
+    /* -----------------------------------------
+       LOGO FILE PREVIEW
+    ----------------------------------------- */
 
-                                    <tr>
+    logoFile?.addEventListener(
+        "change",
+        () => {
 
-                                        <td>
-                                            ${escapeHtml(
-                                                setting.key ||
-                                                setting.name ||
-                                                setting.id ||
-                                                "—"
-                                            )}
-                                        </td>
+            const file =
+                logoFile.files?.[0];
 
-                                        <td>
-                                            ${escapeHtml(
-                                                formatSettingValue(
-                                                    setting.value
-                                                )
-                                            )}
-                                        </td>
+            if (!file) {
+                return;
+            }
 
-                                        <td>
-                                            ${formatDateTime(
-                                                setting.updated_at
-                                            )}
-                                        </td>
 
-                                    </tr>
-                                `
-                            )
-                            .join("")}
+            if (
+                ![
+                    "image/png",
+                    "image/jpeg",
+                    "image/webp",
+                    "image/svg+xml"
+                ].includes(
+                    file.type
+                )
+            ) {
 
-                    </tbody>
+                alert(
+                    "Please select PNG, JPG, WEBP or SVG."
+                );
 
-                </table>
+                logoFile.value = "";
 
-            </div>
-        `;
-    }
+                return;
+            }
 
-    return `
 
-        <div class="admin-table-wrapper">
+            if (
+                file.size >
+                3 * 1024 * 1024
+            ) {
 
-            <table class="admin-table">
+                alert(
+                    "Logo must be smaller than 3 MB."
+                );
 
-                <thead>
-                    <tr>
-                        <th>Setting</th>
-                        <th>Value</th>
-                    </tr>
-                </thead>
+                logoFile.value = "";
 
-                <tbody>
+                return;
+            }
 
-                    ${Object.entries(settings)
-                        .map(
-                            ([key, value]) => `
 
-                                <tr>
+            const reader =
+                new FileReader();
 
-                                    <td>
-                                        <strong>
-                                            ${escapeHtml(
-                                                key
-                                            )}
-                                        </strong>
-                                    </td>
 
-                                    <td>
-                                        ${escapeHtml(
-                                            formatSettingValue(
-                                                value
-                                            )
-                                        )}
-                                    </td>
+            reader.onload =
+                event => {
 
-                                </tr>
-                            `
-                        )
-                        .join("")}
+                    const box =
+                        $("logoPreviewBox");
 
-                </tbody>
+                    if (!box) {
+                        return;
+                    }
 
-            </table>
+                    box.innerHTML = `
 
-        </div>
-    `;
+                        <img
+                            id="logoPreview"
+                            src="${event.target.result}"
+                            alt="Logo preview"
+                            style="
+                                max-width:190px;
+                                max-height:90px;
+                                object-fit:contain;
+                            "
+                        >
+
+                    `;
+
+                };
+
+
+            reader.readAsDataURL(
+                file
+            );
+
+        }
+    );
+
+
+    /* -----------------------------------------
+       REMOVE LOGO
+    ----------------------------------------- */
+
+    removeLogo?.addEventListener(
+        "click",
+        () => {
+
+            if (logoFile) {
+                logoFile.value = "";
+            }
+
+            if (logoUrl) {
+                logoUrl.value = "";
+            }
+
+
+            const box =
+                $("logoPreviewBox");
+
+            if (box) {
+
+                box.innerHTML = `
+
+                    <span
+                        style="
+                            color:#6b7280;
+                        "
+                    >
+                        No logo selected
+                    </span>
+
+                `;
+            }
+
+        }
+    );
+
+
+    /* -----------------------------------------
+       PRIMARY COLOR SYNC
+    ----------------------------------------- */
+
+    primaryPicker?.addEventListener(
+        "input",
+        () => {
+
+            if (primaryInput) {
+
+                primaryInput.value =
+                    primaryPicker.value;
+
+            }
+
+        }
+    );
+
+
+    primaryInput?.addEventListener(
+        "input",
+        () => {
+
+            const value =
+                primaryInput.value.trim();
+
+
+            if (
+                /^#[0-9a-fA-F]{6}$/
+                    .test(value)
+            ) {
+
+                if (primaryPicker) {
+
+                    primaryPicker.value =
+                        value;
+
+                }
+
+            }
+
+        }
+    );
+
+
+    /* -----------------------------------------
+       ACCENT COLOR SYNC
+    ----------------------------------------- */
+
+    accentPicker?.addEventListener(
+        "input",
+        () => {
+
+            if (accentInput) {
+
+                accentInput.value =
+                    accentPicker.value;
+
+            }
+
+        }
+    );
+
+
+    accentInput?.addEventListener(
+        "input",
+        () => {
+
+            const value =
+                accentInput.value.trim();
+
+
+            if (
+                /^#[0-9a-fA-F]{6}$/
+                    .test(value)
+            ) {
+
+                if (accentPicker) {
+
+                    accentPicker.value =
+                        value;
+
+                }
+
+            }
+
+        }
+    );
+
+
+    /* -----------------------------------------
+       RELOAD
+    ----------------------------------------- */
+
+    reloadBranding?.addEventListener(
+        "click",
+        () => loadSettings()
+    );
+
+
+    /* -----------------------------------------
+       SAVE
+    ----------------------------------------- */
+
+    form?.addEventListener(
+        "submit",
+        async event => {
+
+            event.preventDefault();
+
+            await saveBrandingSettings();
+
+        }
+    );
+
 }
 
+
+/* =========================================================
+   SAVE BRANDING
+========================================================= */
+
+async function saveBrandingSettings() {
+
+    const saveButton =
+        $("saveBranding");
+
+    const message =
+        $("brandingMessage");
+
+
+    const brandName =
+        $("brandName")?.value.trim() ||
+        "";
+
+    const logoUrl =
+        $("logoUrl")?.value.trim() ||
+        "";
+
+    const primaryColor =
+        $("primaryColor")?.value.trim() ||
+        "";
+
+    const accentColor =
+        $("accentColor")?.value.trim() ||
+        "";
+
+    const supportEmail =
+        $("supportEmail")?.value.trim() ||
+        "";
+
+    const logoFile =
+        $("logoFile")?.files?.[0] ||
+        null;
+
+
+    /* -----------------------------------------
+       VALIDATION
+    ----------------------------------------- */
+
+    if (!brandName) {
+
+        showBrandingMessage(
+            "Brand name is required.",
+            true
+        );
+
+        return;
+    }
+
+
+    if (
+        !/^#[0-9a-fA-F]{6}$/
+            .test(primaryColor)
+    ) {
+
+        showBrandingMessage(
+            "Primary color must be a valid HEX color.",
+            true
+        );
+
+        return;
+    }
+
+
+    if (
+        !/^#[0-9a-fA-F]{6}$/
+            .test(accentColor)
+    ) {
+
+        showBrandingMessage(
+            "Accent color must be a valid HEX color.",
+            true
+        );
+
+        return;
+    }
+
+
+    if (
+        supportEmail &&
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/
+            .test(supportEmail)
+    ) {
+
+        showBrandingMessage(
+            "Please enter a valid support email.",
+            true
+        );
+
+        return;
+    }
+
+
+    if (logoFile) {
+
+        if (
+            logoFile.size >
+            3 * 1024 * 1024
+        ) {
+
+            showBrandingMessage(
+                "Logo must be smaller than 3 MB.",
+                true
+            );
+
+            return;
+        }
+
+    }
+
+
+    try {
+
+        if (saveButton) {
+
+            saveButton.disabled =
+                true;
+
+            saveButton.textContent =
+                "Saving...";
+
+        }
+
+
+        showBrandingMessage(
+            "Saving branding settings...",
+            false
+        );
+
+
+        /*
+         * -------------------------------------------------
+         * Upload logo if selected
+         * -------------------------------------------------
+         */
+
+        let finalLogoUrl =
+            logoUrl;
+
+
+        if (logoFile) {
+
+            const session =
+                await getSession();
+
+
+            if (!session) {
+                return;
+            }
+
+
+            const fileExtension =
+                getFileExtension(
+                    logoFile.name,
+                    logoFile.type
+                );
+
+
+            const fileName =
+                `branding/logo-${Date.now()}-${Math.random()
+                    .toString(36)
+                    .slice(2)}.${fileExtension}`;
+
+
+            const {
+                error:
+                    uploadError
+            } =
+                await sb.storage
+                    .from("branding")
+                    .upload(
+                        fileName,
+                        logoFile,
+                        {
+                            cacheControl:
+                                "3600",
+                            upsert:
+                                false,
+                            contentType:
+                                logoFile.type
+                        }
+                    );
+
+
+            if (uploadError) {
+
+                console.error(
+                    "Logo upload error:",
+                    uploadError
+                );
+
+                throw new Error(
+                    "Logo upload failed: " +
+                    uploadError.message
+                );
+
+            }
+
+
+            const {
+                data:
+                    publicUrlData
+            } =
+                sb.storage
+                    .from("branding")
+                    .getPublicUrl(
+                        fileName
+                    );
+
+
+            finalLogoUrl =
+                publicUrlData?.publicUrl ||
+                "";
+
+        }
+
+
+        /*
+         * -------------------------------------------------
+         * Send branding update to Admin Function
+         * -------------------------------------------------
+         */
+
+        const data =
+            await api(
+                "settings",
+                {
+                    action:
+                        "save_branding",
+
+                    brand_name:
+                        brandName,
+
+                    logo_url:
+                        finalLogoUrl,
+
+                    primary_color:
+                        primaryColor,
+
+                    accent_color:
+                        accentColor,
+
+                    support_email:
+                        supportEmail
+                }
+            );
+
+
+        if (
+            data &&
+            data.error
+        ) {
+
+            throw new Error(
+                data.error
+            );
+
+        }
+
+
+        currentBrandingSettings = {
+
+            brand_name:
+                brandName,
+
+            logo_url:
+                finalLogoUrl,
+
+            primary_color:
+                primaryColor,
+
+            accent_color:
+                accentColor,
+
+            support_email:
+                supportEmail
+
+        };
+
+
+        showBrandingMessage(
+            "Branding settings saved successfully.",
+            false
+        );
+
+
+        /*
+         * Refresh logo URL field
+         */
+
+        if ($("logoUrl")) {
+
+            $("logoUrl").value =
+                finalLogoUrl;
+
+        }
+
+
+    } catch (error) {
+
+        console.error(
+            "Save branding error:",
+            error
+        );
+
+
+        showBrandingMessage(
+            error?.message ||
+                "Unable to save branding settings.",
+            true
+        );
+
+
+    } finally {
+
+        if (saveButton) {
+
+            saveButton.disabled =
+                false;
+
+            saveButton.textContent =
+                "Save Branding Settings";
+
+        }
+
+    }
+
+}
+
+
+/* =========================================================
+   BRANDING MESSAGE
+========================================================= */
+
+function showBrandingMessage(
+    text,
+    isError
+) {
+
+    const element =
+        $("brandingMessage");
+
+    if (!element) {
+        return;
+    }
+
+
+    element.textContent =
+        text;
+
+    element.style.display =
+        "inline-block";
+
+    element.style.color =
+        isError
+            ? "#dc2626"
+            : "#16a34a";
+
+}
+
+
+/* =========================================================
+   FILE EXTENSION
+========================================================= */
+
+function getFileExtension(
+    fileName,
+    mimeType
+) {
+
+    const existing =
+        String(
+            fileName || ""
+        )
+            .split(".")
+            .pop()
+            .toLowerCase();
+
+
+    if (
+        [
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "svg"
+        ].includes(existing)
+    ) {
+
+        return existing ===
+            "jpeg"
+            ? "jpg"
+            : existing;
+
+    }
+
+
+    switch (mimeType) {
+
+        case "image/png":
+            return "png";
+
+        case "image/jpeg":
+            return "jpg";
+
+        case "image/webp":
+            return "webp";
+
+        case "image/svg+xml":
+            return "svg";
+
+        default:
+            return "png";
+
+    }
+
+}
 
 /* =========================================================
    SECTION ROUTER
