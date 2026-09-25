@@ -1,3 +1,4 @@
+```javascript
 /* =========================================================
    OBSEDIAN.SPACE
    ADMIN PANEL
@@ -21,7 +22,6 @@ const sb = supabase.createClient(
 const $ = (id) =>
     document.getElementById(id);
 
-
 let currentSection = "dashboard";
 
 
@@ -30,19 +30,23 @@ let currentSection = "dashboard";
 ========================================================= */
 
 async function getSession() {
+
     try {
+
         const {
             data,
             error
         } = await sb.auth.getSession();
 
         if (error) {
+
             console.error(
                 "Supabase session error:",
                 error
             );
 
             redirectToLogin();
+
             return null;
         }
 
@@ -50,7 +54,9 @@ async function getSession() {
             data?.session || null;
 
         if (!session) {
+
             redirectToLogin();
+
             return null;
         }
 
@@ -64,17 +70,18 @@ async function getSession() {
         );
 
         redirectToLogin();
+
         return null;
     }
 }
 
 
+/* =========================================================
+   REDIRECT TO LOGIN
+========================================================= */
+
 function redirectToLogin() {
 
-    /*
-     * Remember that the user specifically requested
-     * the Admin Panel.
-     */
     sessionStorage.setItem(
         "obsedian_admin_login",
         "1"
@@ -93,6 +100,7 @@ function redirectToLogin() {
     );
 }
 
+
 /* =========================================================
    ADMIN EDGE FUNCTION API
 ========================================================= */
@@ -110,26 +118,14 @@ async function api(
     }
 
 
-    /*
-     * Supabase project URL
-     */
-
     const supabaseUrl =
         window.OBSEDIAN_CONFIG.SUPABASE_URL;
 
-
-    /*
-     * Publishable key
-     */
 
     const publishableKey =
         window.OBSEDIAN_CONFIG
             .SUPABASE_PUBLISHABLE_KEY;
 
-
-    /*
-     * Build Edge Function URL
-     */
 
     const query =
         new URLSearchParams({
@@ -185,17 +181,6 @@ async function api(
     }
 
 
-    /*
-     * Read response as text first.
-     *
-     * This prevents:
-     *
-     * Unexpected token '<'
-     *
-     * when Supabase/Cloudflare returns
-     * HTML instead of JSON.
-     */
-
     const raw =
         await response.text();
 
@@ -213,7 +198,6 @@ async function api(
 
 
     let data = null;
-
 
     try {
 
@@ -235,10 +219,6 @@ async function api(
     }
 
 
-    /*
-     * Handle HTTP errors
-     */
-
     if (!response.ok) {
 
         const message =
@@ -251,10 +231,6 @@ async function api(
         );
     }
 
-
-    /*
-     * Handle application-level errors
-     */
 
     if (
         data &&
@@ -351,15 +327,13 @@ async function loadDashboard() {
                 Recent Audit Logs
             </h2>
 
-            <pre id="logs">
-${escapeHtml(
-    JSON.stringify(
-        data?.logs || [],
-        null,
-        2
-    )
-)}
-            </pre>
+            <pre id="logs">${escapeHtml(
+                JSON.stringify(
+                    data?.logs || [],
+                    null,
+                    2
+                )
+            )}</pre>
 
         </div>
 
@@ -678,6 +652,464 @@ function renderUsers(
 
 
 /* =========================================================
+   WEBSITES
+========================================================= */
+
+async function loadWebsites() {
+
+    $("pageTitle").textContent =
+        "Websites";
+
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <div style="
+                display:flex;
+                gap:12px;
+                align-items:center;
+                justify-content:space-between;
+                flex-wrap:wrap;
+            ">
+
+                <div>
+
+                    <h2 style="margin:0 0 6px;">
+                        Website Management
+                    </h2>
+
+                    <p style="margin:0;">
+                        Monitor websites connected to
+                        Obsedian.Space accounts.
+                    </p>
+
+                </div>
+
+                <button
+                    type="button"
+                    id="refreshWebsites"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <input
+                id="websiteSearch"
+                class="search-box"
+                placeholder="Search website, URL, user ID, status..."
+                autocomplete="off"
+            >
+
+        </div>
+
+
+        <div class="card">
+
+            <div id="websitesTable">
+
+                Loading websites...
+
+            </div>
+
+        </div>
+
+    `;
+
+
+    const searchInput =
+        $("websiteSearch");
+
+
+    let timer;
+
+
+    if (searchInput) {
+
+        searchInput.addEventListener(
+            "input",
+            () => {
+
+                clearTimeout(
+                    timer
+                );
+
+
+                timer =
+                    setTimeout(
+                        () => refreshWebsites(),
+                        300
+                    );
+
+            }
+        );
+
+    }
+
+
+    $("refreshWebsites")?.addEventListener(
+        "click",
+        () => refreshWebsites()
+    );
+
+
+    await refreshWebsites();
+}
+
+
+/* =========================================================
+   REFRESH WEBSITES
+========================================================= */
+
+async function refreshWebsites() {
+
+    const search =
+        $("websiteSearch")?.value || "";
+
+
+    const container =
+        $("websitesTable");
+
+
+    if (container) {
+
+        container.innerHTML = `
+
+            <div class="empty">
+
+                Loading websites...
+
+            </div>
+
+        `;
+
+    }
+
+
+    const data =
+        await api(
+            "websites",
+            {
+                search
+            }
+        );
+
+
+    renderWebsites(
+        data?.websites || []
+    );
+}
+
+
+/* =========================================================
+   RENDER WEBSITES
+========================================================= */
+
+function renderWebsites(
+    websites
+) {
+
+    const container =
+        $("websitesTable");
+
+
+    if (!container) {
+        return;
+    }
+
+
+    if (!websites.length) {
+
+        container.innerHTML = `
+
+            <div class="empty">
+
+                No websites found.
+
+            </div>
+
+        `;
+
+        return;
+    }
+
+
+    container.innerHTML = `
+
+        <div class="admin-table-wrapper">
+
+            <table class="admin-table">
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+                            Website
+                        </th>
+
+                        <th>
+                            Owner
+                        </th>
+
+                        <th>
+                            Status
+                        </th>
+
+                        <th>
+                            Verification
+                        </th>
+
+                        <th>
+                            Crawl
+                        </th>
+
+                        <th>
+                            Last Crawled
+                        </th>
+
+                        <th>
+                            Next Crawl
+                        </th>
+
+                        <th>
+                            Created
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                    ${websites
+                        .map(
+                            website => {
+
+                                const status =
+                                    website.status ||
+                                    "unknown";
+
+
+                                const verification =
+                                    website.verified_at
+                                        ? "Verified"
+                                        : "Not verified";
+
+
+                                return `
+
+                                    <tr>
+
+                                        <td>
+
+                                            <strong>
+
+                                                ${escapeHtml(
+                                                    website.name ||
+                                                    "Unnamed Website"
+                                                )}
+
+                                            </strong>
+
+                                            <br>
+
+                                            <small>
+
+                                                ${escapeHtml(
+                                                    website.url ||
+                                                    website.normalized_url ||
+                                                    "No URL"
+                                                )}
+
+                                            </small>
+
+                                            ${
+                                                website.normalized_url &&
+                                                website.normalized_url !== website.url
+                                                    ? `
+
+                                                        <br>
+
+                                                        <small>
+
+                                                            ${escapeHtml(
+                                                                website.normalized_url
+                                                            )}
+
+                                                        </small>
+
+                                                    `
+                                                    : ""
+                                            }
+
+                                        </td>
+
+
+                                        <td>
+
+                                            <small>
+
+                                                ${escapeHtml(
+                                                    website.owner_email ||
+                                                    website.user_email ||
+                                                    website.user_id ||
+                                                    "Unknown"
+                                                )}
+
+                                            </small>
+
+                                        </td>
+
+
+                                        <td>
+
+                                            <span class="badge">
+
+                                                ${escapeHtml(
+                                                    status
+                                                )}
+
+                                            </span>
+
+                                        </td>
+
+
+                                        <td>
+
+                                            <span class="badge">
+
+                                                ${escapeHtml(
+                                                    verification
+                                                )}
+
+                                            </span>
+
+                                            ${
+                                                website.verified_at
+                                                    ? `
+
+                                                        <br>
+
+                                                        <small>
+
+                                                            ${formatDate(
+                                                                website.verified_at
+                                                            )}
+
+                                                        </small>
+
+                                                    `
+                                                    : ""
+                                            }
+
+                                        </td>
+
+
+                                        <td>
+
+                                            ${escapeHtml(
+                                                website.crawl_frequency ||
+                                                "—"
+                                            )}
+
+                                        </td>
+
+
+                                        <td>
+
+                                            ${formatDateTime(
+                                                website.last_crawled_at
+                                            )}
+
+                                        </td>
+
+
+                                        <td>
+
+                                            ${formatDateTime(
+                                                website.next_crawl_at
+                                            )}
+
+                                        </td>
+
+
+                                        <td>
+
+                                            ${formatDate(
+                                                website.created_at
+                                            )}
+
+                                        </td>
+
+                                    </tr>
+
+                                `;
+                            }
+                        )
+                        .join("")
+                    }
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    `;
+}
+
+
+/* =========================================================
+   GENERIC PLACEHOLDER
+========================================================= */
+
+function loadPlaceholder(
+    section
+) {
+
+    $("pageTitle").textContent =
+        formatLabel(
+            section
+        );
+
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <h2>
+
+                ${escapeHtml(
+                    formatLabel(
+                        section
+                    )
+                )}
+
+            </h2>
+
+
+            <p>
+
+                This module will be implemented
+                in the next Admin Panel step.
+
+            </p>
+
+        </div>
+
+    `;
+}
+
+
+/* =========================================================
    NAVIGATION
 ========================================================= */
 
@@ -688,10 +1120,6 @@ async function loadSection(
     currentSection =
         section;
 
-
-    /*
-     * Highlight active navigation item
-     */
 
     document
         .querySelectorAll(
@@ -742,40 +1170,27 @@ async function loadSection(
 
 
         /*
+         * Websites
+         */
+
+        if (
+            section ===
+            "websites"
+        ) {
+
+            await loadWebsites();
+
+            return;
+        }
+
+
+        /*
          * Other sections
          */
 
-        $("pageTitle").textContent =
-            formatLabel(
-                section
-            );
-
-
-        $("content").innerHTML = `
-
-            <div class="card">
-
-                <h2>
-
-                    ${escapeHtml(
-                        formatLabel(
-                            section
-                        )
-                    )}
-
-                </h2>
-
-
-                <p>
-
-                    This module will be implemented
-                    in the next Admin Panel step.
-
-                </p>
-
-            </div>
-
-        `;
+        loadPlaceholder(
+            section
+        );
 
     } catch (error) {
 
@@ -806,7 +1221,7 @@ async function loadSection(
 
                 <button
                     type="button"
-                    onclick="loadSection('${escapeHtml(section)}')"
+                    id="retrySection"
                 >
                     Retry
                 </button>
@@ -814,6 +1229,12 @@ async function loadSection(
             </div>
 
         `;
+
+
+        $("retrySection")?.addEventListener(
+            "click",
+            () => loadSection(section)
+        );
     }
 }
 
@@ -882,6 +1303,58 @@ function formatDate(
 
             day:
                 "numeric"
+        }
+    );
+}
+
+
+/* =========================================================
+   FORMAT DATE + TIME
+========================================================= */
+
+function formatDateTime(
+    value
+) {
+
+    if (!value) {
+
+        return "—";
+    }
+
+
+    const date =
+        new Date(
+            value
+        );
+
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+
+        return "—";
+    }
+
+
+    return date.toLocaleString(
+        undefined,
+        {
+            year:
+                "numeric",
+
+            month:
+                "short",
+
+            day:
+                "numeric",
+
+            hour:
+                "2-digit",
+
+            minute:
+                "2-digit"
         }
     );
 }
@@ -1016,3 +1489,4 @@ sb.auth.onAuthStateChange(
 loadSection(
     "dashboard"
 );
+```
