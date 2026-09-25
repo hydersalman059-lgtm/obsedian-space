@@ -1,99 +1,332 @@
+/* =========================================================
+   OBSEDIAN.SPACE
+   ADMIN PANEL
+========================================================= */
+
+
+/* =========================================================
+   SUPABASE
+========================================================= */
+
 const sb = supabase.createClient(
     window.OBSEDIAN_CONFIG.SUPABASE_URL,
     window.OBSEDIAN_CONFIG.SUPABASE_PUBLISHABLE_KEY
 );
 
-const $ = (id) => document.getElementById(id);
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+const $ = (id) =>
+    document.getElementById(id);
+
 
 let currentSection = "dashboard";
 
+
+/* =========================================================
+   AUTH SESSION
+========================================================= */
+
 async function getSession() {
 
-    const {
-        data: { session }
-    } = await sb.auth.getSession();
+    try {
+
+        const {
+            data,
+            error
+        } = await sb.auth.getSession();
+
+        if (error) {
+
+            console.error(
+                "Supabase session error:",
+                error
+            );
+
+            location.href = "/app/";
+
+            return null;
+        }
+
+        const session =
+            data?.session || null;
+
+        if (!session) {
+
+            location.href = "/app/";
+
+            return null;
+        }
+
+        return session;
+
+    } catch (error) {
+
+        console.error(
+            "Session exception:",
+            error
+        );
+
+        location.href = "/app/";
+
+        return null;
+    }
+}
+
+
+/* =========================================================
+   ADMIN EDGE FUNCTION API
+========================================================= */
+
+async function api(
+    section,
+    params = {}
+) {
+
+    const session =
+        await getSession();
 
     if (!session) {
-        location.href = "/app/";
         return null;
     }
 
-    return session;
-}
 
-async function api(section, params = {}) {
+    /*
+     * Supabase project URL
+     */
 
-    const session = await getSession();
+    const supabaseUrl =
+        window.OBSEDIAN_CONFIG.SUPABASE_URL;
 
-    if (!session) return null;
 
-    const query = new URLSearchParams({
-        section,
-        ...params
-    });
+    /*
+     * Publishable key
+     */
 
-    const response = await fetch(
-        `/api/admin?${query.toString()}`,
-        {
-            headers: {
-                Authorization:
-                    `Bearer ${session.access_token}`
-            }
-        }
+    const publishableKey =
+        window.OBSEDIAN_CONFIG
+            .SUPABASE_PUBLISHABLE_KEY;
+
+
+    /*
+     * Build Edge Function URL
+     */
+
+    const query =
+        new URLSearchParams({
+            section,
+            ...params
+        });
+
+
+    const endpoint =
+        `${supabaseUrl}/functions/v1/admin?${query.toString()}`;
+
+
+    console.log(
+        "Admin API request:",
+        endpoint
     );
 
-    const data = await response.json();
 
-    if (!response.ok) {
+    let response;
+
+    try {
+
+        response =
+            await fetch(
+                endpoint,
+                {
+                    method: "GET",
+
+                    headers: {
+
+                        "Authorization":
+                            `Bearer ${session.access_token}`,
+
+                        "apikey":
+                            publishableKey,
+
+                        "Content-Type":
+                            "application/json"
+                    }
+                }
+            );
+
+    } catch (error) {
+
+        console.error(
+            "Admin API network error:",
+            error
+        );
+
         throw new Error(
-            data?.error || "Admin request failed."
+            "Unable to connect to the Admin server."
         );
     }
+
+
+    /*
+     * Read response as text first.
+     *
+     * This prevents:
+     *
+     * Unexpected token '<'
+     *
+     * when Supabase/Cloudflare returns
+     * HTML instead of JSON.
+     */
+
+    const raw =
+        await response.text();
+
+
+    console.log(
+        "Admin API status:",
+        response.status
+    );
+
+
+    console.log(
+        "Admin API response:",
+        raw
+    );
+
+
+    let data = null;
+
+
+    try {
+
+        data =
+            raw
+                ? JSON.parse(raw)
+                : null;
+
+    } catch (error) {
+
+        console.error(
+            "Admin API returned non-JSON:",
+            raw
+        );
+
+        throw new Error(
+            `Admin server returned an invalid response (HTTP ${response.status}).`
+        );
+    }
+
+
+    /*
+     * Handle HTTP errors
+     */
+
+    if (!response.ok) {
+
+        const message =
+            data?.error ||
+            data?.message ||
+            `Admin request failed with HTTP ${response.status}.`;
+
+        throw new Error(
+            message
+        );
+    }
+
+
+    /*
+     * Handle application-level errors
+     */
+
+    if (
+        data &&
+        data.error
+    ) {
+
+        throw new Error(
+            data.error
+        );
+    }
+
 
     return data;
 }
 
 
-/* -----------------------------------------
-   Dashboard
------------------------------------------ */
+/* =========================================================
+   DASHBOARD
+========================================================= */
 
 async function loadDashboard() {
 
     $("pageTitle").textContent =
         "Admin Dashboard";
 
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <h2>
+                Loading dashboard...
+            </h2>
+
+            <p>
+                Please wait while admin statistics
+                are being loaded.
+            </p>
+
+        </div>
+
+    `;
+
+
     const data =
-        await api("dashboard");
+        await api(
+            "dashboard"
+        );
+
 
     const metrics =
         data?.metrics || {};
+
 
     $("content").innerHTML = `
 
         <div class="stats">
 
             ${Object.entries(metrics)
-                .map(([key, value]) => `
-                    <div class="stat">
-                        <small>
-                            ${escapeHtml(
-                                formatLabel(key)
-                            )}
-                        </small>
+                .map(
+                    ([key, value]) => `
 
-                        <br>
+                        <div class="stat">
 
-                        <b>
-                            ${escapeHtml(
-                                String(value ?? 0)
-                            )}
-                        </b>
-                    </div>
-                `)
-                .join("")}
+                            <small>
+                                ${escapeHtml(
+                                    formatLabel(key)
+                                )}
+                            </small>
+
+                            <br>
+
+                            <b>
+                                ${escapeHtml(
+                                    String(
+                                        value ?? 0
+                                    )
+                                )}
+                            </b>
+
+                        </div>
+
+                    `
+                )
+                .join("")
+            }
 
         </div>
+
 
         <div class="card">
 
@@ -112,18 +345,20 @@ ${escapeHtml(
             </pre>
 
         </div>
+
     `;
 }
 
 
-/* -----------------------------------------
-   Users
------------------------------------------ */
+/* =========================================================
+   USERS
+========================================================= */
 
 async function loadUsers() {
 
     $("pageTitle").textContent =
         "Users";
+
 
     $("content").innerHTML = `
 
@@ -133,50 +368,73 @@ async function loadUsers() {
                 id="userSearch"
                 class="search-box"
                 placeholder="Search name, email, phone, plan..."
+                autocomplete="off"
             >
 
         </div>
 
+
         <div class="card">
 
             <div id="usersTable">
+
                 Loading users...
+
             </div>
 
         </div>
+
     `;
+
 
     const searchInput =
         $("userSearch");
 
+
     let timer;
+
 
     searchInput.addEventListener(
         "input",
         () => {
 
-            clearTimeout(timer);
-
-            timer = setTimeout(
-                () => refreshUsers(),
-                300
+            clearTimeout(
+                timer
             );
+
+
+            timer =
+                setTimeout(
+                    () => refreshUsers(),
+                    300
+                );
+
         }
     );
+
 
     await refreshUsers();
 }
 
+
+/* =========================================================
+   REFRESH USERS
+========================================================= */
 
 async function refreshUsers() {
 
     const search =
         $("userSearch")?.value || "";
 
+
     const data =
-        await api("users", {
-            search
-        });
+        await api(
+            "users",
+            {
+                search
+            }
+        );
+
 
     renderUsers(
         data?.users || []
@@ -184,18 +442,29 @@ async function refreshUsers() {
 }
 
 
-function renderUsers(users) {
+/* =========================================================
+   RENDER USERS
+========================================================= */
+
+function renderUsers(
+    users
+) {
 
     if (!users.length) {
 
         $("usersTable").innerHTML = `
+
             <div class="empty">
+
                 No users found.
+
             </div>
+
         `;
 
         return;
     }
+
 
     $("usersTable").innerHTML = `
 
@@ -206,161 +475,285 @@ function renderUsers(users) {
                 <thead>
 
                     <tr>
-                        <th>User</th>
-                        <th>Role</th>
-                        <th>Plan</th>
-                        <th>Status</th>
-                        <th>Websites</th>
-                        <th>AI Runs</th>
-                        <th>Expiry</th>
-                        <th>Registered</th>
+
+                        <th>
+                            User
+                        </th>
+
+                        <th>
+                            Role
+                        </th>
+
+                        <th>
+                            Plan
+                        </th>
+
+                        <th>
+                            Status
+                        </th>
+
+                        <th>
+                            Websites
+                        </th>
+
+                        <th>
+                            AI Runs
+                        </th>
+
+                        <th>
+                            Expiry
+                        </th>
+
+                        <th>
+                            Registered
+                        </th>
+
                     </tr>
 
                 </thead>
 
+
                 <tbody>
 
-                    ${users.map(user => `
+                    ${users
+                        .map(
+                            user => `
 
-                        <tr>
+                                <tr>
 
-                            <td>
+                                    <td>
 
-                                <strong>
-                                    ${escapeHtml(
-                                        user.full_name ||
-                                        "Unnamed User"
-                                    )}
-                                </strong>
+                                        <strong>
 
-                                <br>
+                                            ${escapeHtml(
+                                                user.full_name ||
+                                                "Unnamed User"
+                                            )}
 
-                                <small>
-                                    ${escapeHtml(
-                                        user.email ||
-                                        "No email"
-                                    )}
-                                </small>
+                                        </strong>
 
-                                ${
-                                    user.phone
-                                    ? `
-                                    <br>
-                                    <small>
-                                        ${escapeHtml(
+                                        <br>
+
+                                        <small>
+
+                                            ${escapeHtml(
+                                                user.email ||
+                                                "No email"
+                                            )}
+
+                                        </small>
+
+                                        ${
                                             user.phone
+                                                ? `
+
+                                                    <br>
+
+                                                    <small>
+
+                                                        ${escapeHtml(
+                                                            user.phone
+                                                        )}
+
+                                                    </small>
+
+                                                `
+                                                : ""
+                                        }
+
+                                    </td>
+
+
+                                    <td>
+
+                                        <span class="badge">
+
+                                            ${escapeHtml(
+                                                user.role ||
+                                                "user"
+                                            )}
+
+                                        </span>
+
+                                    </td>
+
+
+                                    <td>
+
+                                        ${escapeHtml(
+                                            user.plan_id ||
+                                            "free"
                                         )}
-                                    </small>
-                                    `
-                                    : ""
-                                }
 
-                            </td>
+                                    </td>
 
-                            <td>
-                                <span class="badge">
-                                    ${escapeHtml(
-                                        user.role
-                                    )}
-                                </span>
-                            </td>
 
-                            <td>
-                                ${escapeHtml(
-                                    user.plan_id
-                                )}
-                            </td>
+                                    <td>
 
-                            <td>
-                                <span class="badge">
-                                    ${escapeHtml(
-                                        user.subscription_status
-                                    )}
-                                </span>
-                            </td>
+                                        <span class="badge">
 
-                            <td>
-                                ${user.websites}
-                            </td>
+                                            ${escapeHtml(
+                                                user.subscription_status ||
+                                                "none"
+                                            )}
 
-                            <td>
-                                ${user.ai_runs}
-                            </td>
+                                        </span>
 
-                            <td>
-                                ${formatDate(
-                                    user.subscription_ends_at
-                                )}
-                            </td>
+                                    </td>
 
-                            <td>
-                                ${formatDate(
-                                    user.created_at
-                                )}
-                            </td>
 
-                        </tr>
+                                    <td>
 
-                    `).join("")}
+                                        ${escapeHtml(
+                                            String(
+                                                user.websites ??
+                                                0
+                                            )
+                                        )}
+
+                                    </td>
+
+
+                                    <td>
+
+                                        ${escapeHtml(
+                                            String(
+                                                user.ai_runs ??
+                                                0
+                                            )
+                                        )}
+
+                                    </td>
+
+
+                                    <td>
+
+                                        ${formatDate(
+                                            user.subscription_ends_at
+                                        )}
+
+                                    </td>
+
+
+                                    <td>
+
+                                        ${formatDate(
+                                            user.created_at
+                                        )}
+
+                                    </td>
+
+                                </tr>
+
+                            `
+                        )
+                        .join("")
+                    }
 
                 </tbody>
 
             </table>
 
         </div>
+
     `;
 }
 
 
-/* -----------------------------------------
-   Navigation
------------------------------------------ */
+/* =========================================================
+   NAVIGATION
+========================================================= */
 
-async function loadSection(section) {
+async function loadSection(
+    section
+) {
 
-    currentSection = section;
+    currentSection =
+        section;
+
+
+    /*
+     * Highlight active navigation item
+     */
 
     document
         .querySelectorAll(
             ".admin-nav button"
         )
-        .forEach(button => {
+        .forEach(
+            button => {
 
-            button.classList.toggle(
-                "active",
-                button.dataset.section === section
-            );
+                button.classList.toggle(
+                    "active",
+                    button.dataset.section === section
+                );
 
-        });
+            }
+        );
+
 
     try {
 
-        if (section === "dashboard") {
+        /*
+         * Dashboard
+         */
+
+        if (
+            section ===
+            "dashboard"
+        ) {
+
             await loadDashboard();
+
             return;
         }
 
-        if (section === "users") {
+
+        /*
+         * Users
+         */
+
+        if (
+            section ===
+            "users"
+        ) {
+
             await loadUsers();
+
             return;
         }
+
+
+        /*
+         * Other sections
+         */
 
         $("pageTitle").textContent =
-            formatLabel(section);
+            formatLabel(
+                section
+            );
+
 
         $("content").innerHTML = `
 
             <div class="card">
 
                 <h2>
+
                     ${escapeHtml(
-                        formatLabel(section)
+                        formatLabel(
+                            section
+                        )
                     )}
+
                 </h2>
 
+
                 <p>
+
                     This module will be implemented
                     in the next Admin Panel step.
+
                 </p>
 
             </div>
@@ -369,7 +762,11 @@ async function loadSection(section) {
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            "Admin section error:",
+            error
+        );
+
 
         $("content").innerHTML = `
 
@@ -379,95 +776,226 @@ async function loadSection(section) {
                     Error
                 </h2>
 
+
                 <p>
+
                     ${escapeHtml(
-                        error.message
+                        error?.message ||
+                        "Unable to load this section."
                     )}
+
                 </p>
 
+
+                <button
+                    type="button"
+                    onclick="loadSection('${escapeHtml(section)}')"
+                >
+                    Retry
+                </button>
+
             </div>
+
         `;
     }
 }
 
 
-/* -----------------------------------------
-   Helpers
------------------------------------------ */
+/* =========================================================
+   FORMAT LABEL
+========================================================= */
 
-function formatLabel(value) {
+function formatLabel(
+    value
+) {
 
-    return String(value)
-        .replaceAll("_", " ")
-        .replace(/\b\w/g, c =>
-            c.toUpperCase()
+    return String(
+        value ?? ""
+    )
+        .replaceAll(
+            "_",
+            " "
+        )
+        .replace(
+            /\b\w/g,
+            character =>
+                character.toUpperCase()
         );
 }
 
 
-function formatDate(value) {
+/* =========================================================
+   FORMAT DATE
+========================================================= */
+
+function formatDate(
+    value
+) {
 
     if (!value) {
+
         return "—";
     }
+
 
     const date =
-        new Date(value);
+        new Date(
+            value
+        );
 
-    if (Number.isNaN(date.getTime())) {
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+
         return "—";
     }
+
 
     return date.toLocaleDateString(
         undefined,
         {
-            year: "numeric",
-            month: "short",
-            day: "numeric"
+            year:
+                "numeric",
+
+            month:
+                "short",
+
+            day:
+                "numeric"
         }
     );
 }
 
 
-function escapeHtml(value) {
+/* =========================================================
+   ESCAPE HTML
+========================================================= */
 
-    return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+function escapeHtml(
+    value
+) {
+
+    return String(
+        value ?? ""
+    )
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
 }
 
 
-/* -----------------------------------------
-   Events
------------------------------------------ */
+/* =========================================================
+   NAVIGATION EVENTS
+========================================================= */
 
 document
-    .querySelectorAll(".admin-nav button")
-    .forEach(button => {
+    .querySelectorAll(
+        ".admin-nav button"
+    )
+    .forEach(
+        button => {
 
-        button.addEventListener(
-            "click",
-            () => loadSection(
-                button.dataset.section
-            )
-        );
+            button.addEventListener(
+                "click",
+                () => {
 
-    });
+                    loadSection(
+                        button.dataset.section
+                    );
 
+                }
+            );
 
-$("logout").onclick = async () => {
-
-    await sb.auth.signOut();
-
-    location.href = "/app/";
-};
+        }
+    );
 
 
-/* -----------------------------------------
-   Start
------------------------------------------ */
+/* =========================================================
+   LOGOUT
+========================================================= */
 
-loadSection("dashboard");
+if (
+    $("logout")
+) {
+
+    $("logout").addEventListener(
+        "click",
+        async () => {
+
+            try {
+
+                await sb.auth.signOut();
+
+            } catch (error) {
+
+                console.error(
+                    "Logout error:",
+                    error
+                );
+
+            }
+
+            location.href =
+                "/app/";
+        }
+    );
+}
+
+
+/* =========================================================
+   AUTH STATE LISTENER
+========================================================= */
+
+sb.auth.onAuthStateChange(
+    (
+        event,
+        session
+    ) => {
+
+        /*
+         * If the user signs out in another tab,
+         * return to login.
+         */
+
+        if (
+            event ===
+                "SIGNED_OUT" ||
+            !session
+        ) {
+
+            location.href =
+                "/app/";
+
+        }
+
+    }
+);
+
+
+/* =========================================================
+   START ADMIN PANEL
+========================================================= */
+
+loadSection(
+    "dashboard"
+);
