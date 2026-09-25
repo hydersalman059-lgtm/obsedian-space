@@ -179,19 +179,10 @@ Deno.serve(async (req) => {
 
 
     /* =====================================================
-       SETTINGS WRITE
+       ADMIN WRITE ACTIONS
     ===================================================== */
 
     if (req.method === "POST") {
-
-        if (section !== "settings") {
-            return json(
-                {
-                    error: "POST is only supported for settings."
-                },
-                405
-            );
-        }
 
         let body: any;
 
@@ -199,10 +190,263 @@ Deno.serve(async (req) => {
             body = await req.json();
         } catch (_error) {
             return json(
-                {
-                    error: "Invalid JSON request body."
-                },
+                { error: "Invalid JSON request body." },
                 400
+            );
+        }
+
+        /* -----------------------------------------------------
+           USER MANAGEMENT
+        ----------------------------------------------------- */
+
+        if (section === "users") {
+
+            const action = String(body?.action || "").trim();
+            const userId = String(body?.user_id || "").trim();
+
+            if (!userId) {
+                return json({ error: "user_id is required." }, 400);
+            }
+
+            if (action === "update_user") {
+
+                const role = body?.role !== undefined
+                    ? String(body.role).trim().toLowerCase()
+                    : null;
+
+                const planId = body?.plan_id !== undefined
+                    ? String(body.plan_id).trim()
+                    : null;
+
+                const billingCycle = body?.billing_cycle !== undefined
+                    ? String(body.billing_cycle).trim().toLowerCase()
+                    : null;
+
+                const status = body?.status !== undefined
+                    ? String(body.status).trim().toLowerCase()
+                    : null;
+
+                if (role !== null && !["user", "admin"].includes(role)) {
+                    return json({ error: "Invalid role." }, 400);
+                }
+
+                if (billingCycle !== null && !["free", "monthly", "yearly"].includes(billingCycle)) {
+                    return json({ error: "Invalid billing cycle." }, 400);
+                }
+
+                if (status !== null && !["trial", "active", "paused", "canceled", "cancelled", "expired", "none"].includes(status)) {
+                    return json({ error: "Invalid subscription status." }, 400);
+                }
+
+                if (role !== null) {
+                    const { error } = await sb
+                        .from("profiles")
+                        .update({
+                            role,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq("id", userId);
+
+                    if (error) {
+                        return json({
+                            error: "Unable to update user role.",
+                            details: error.message
+                        }, 500);
+                    }
+                }
+
+                const { data: existingSub, error: subLookupError } = await sb
+                    .from("subscriptions")
+                    .select("*")
+                    .eq("user_id", userId)
+                    .order("created_at", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (subLookupError) {
+                    return json({
+                        error: "Unable to load user subscription.",
+                        details: subLookupError.message
+                    }, 500);
+                }
+
+                const subscriptionPatch: Record<string, any> = {
+                    updated_at: new Date().toISOString()
+                };
+
+                if (planId !== null) subscriptionPatch.plan_id = planId;
+                if (billingCycle !== null) subscriptionPatch.billing_cycle = billingCycle;
+                if (status !== null) {
+                    subscriptionPatch.status = status;
+                    subscriptionPatch.paused_at = status === "paused"
+                        ? new Date().toISOString()
+                        : null;
+                }
+
+                const hasSubscriptionChanges =
+                    planId !== null ||
+                    billingCycle !== null ||
+                    status !== null;
+
+                if (hasSubscriptionChanges) {
+                    if (existingSub) {
+                        const { error } = await sb
+                            .from("subscriptions")
+                            .update(subscriptionPatch)
+                            .eq("id", existingSub.id);
+
+                        if (error) {
+                            return json({
+                                error: "Unable to update subscription.",
+                                details: error.message
+                            }, 500);
+                        }
+                    } else {
+                        const now = new Date();
+                        const end = new Date(now);
+                        end.setDate(end.getDate() + 30);
+
+                        const { error } = await sb
+                            .from("subscriptions")
+                            .insert({
+                                user_id: userId,
+                                plan_id: planId || "free",
+                                billing_cycle: billingCycle || "free",
+                                status: status || "trial",
+                                started_at: now.toISOString(),
+                                subscription_ends_at: end.toISOString(),
+                                created_at: now.toISOString(),
+                                updated_at: now.toISOString()
+                            });
+
+                        if (error) {
+                            return json({
+                                error: "Unable to create subscription.",
+                                details: error.message
+                            }, 500);
+                        }
+                    }
+                }
+
+                return json({
+                    success: true,
+                    message: "User updated successfully."
+                });
+            }
+
+            if (action === "extend_subscription") {
+                const days = Number(body?.days);
+
+                if (!Number.isInteger(days) || days < 1 || days > 3650) {
+                    return json({ error: "Days must be an integer between 1 and 3650." }, 400);
+                }
+
+                const { data: sub, error } = await sb
+                    .from("subscriptions")
+                    .select("*")
+                    .eq("user_id", userId)
+                    .order("created_at", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (error) {
+                    return json({ error: "Unable to load subscription.", details: error.message }, 500);
+                }
+
+                const now = new Date();
+                const currentEnd = sub?.subscription_ends_at
+                    ? new Date(sub.subscription_ends_at)
+                    : now;
+                const base = currentEnd > now ? currentEnd : now;
+                base.setDate(base.getDate() + days);
+
+                if (sub) {
+                    const { error: updateError } = await sb
+                        .from("subscriptions")
+                        .update({
+                            subscription_ends_at: base.toISOString(),
+                            status: sub.status === "paused" ? "paused" : "active",
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq("id", sub.id);
+
+                    if (updateError) {
+                        return json({ error: "Unable to extend subscription.", details: updateError.message }, 500);
+                    }
+                } else {
+                    const { error: insertError } = await sb
+                        .from("subscriptions")
+                        .insert({
+                            user_id: userId,
+                            plan_id: "free",
+                            billing_cycle: "free",
+                            status: "active",
+                            started_at: now.toISOString(),
+                            subscription_ends_at: base.toISOString(),
+                            created_at: now.toISOString(),
+                            updated_at: now.toISOString()
+                        });
+
+                    if (insertError) {
+                        return json({ error: "Unable to create subscription.", details: insertError.message }, 500);
+                    }
+                }
+
+                return json({
+                    success: true,
+                    message: `Subscription extended by ${days} day(s).`
+                });
+            }
+
+            if (action === "pause_subscription" || action === "resume_subscription") {
+                const nextStatus = action === "pause_subscription" ? "paused" : "active";
+
+                const { data: sub, error } = await sb
+                    .from("subscriptions")
+                    .select("id")
+                    .eq("user_id", userId)
+                    .order("created_at", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (error) {
+                    return json({ error: "Unable to load subscription.", details: error.message }, 500);
+                }
+
+                if (!sub) {
+                    return json({ error: "No subscription exists for this user." }, 404);
+                }
+
+                const { error: updateError } = await sb
+                    .from("subscriptions")
+                    .update({
+                        status: nextStatus,
+                        paused_at: nextStatus === "paused" ? new Date().toISOString() : null,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq("id", sub.id);
+
+                if (updateError) {
+                    return json({ error: "Unable to update subscription status.", details: updateError.message }, 500);
+                }
+
+                return json({
+                    success: true,
+                    message: `Subscription ${nextStatus === "paused" ? "paused" : "resumed"}.`
+                });
+            }
+
+            return json({ error: "Unsupported users action." }, 400);
+        }
+
+        /* -----------------------------------------------------
+           SETTINGS WRITE
+        ----------------------------------------------------- */
+
+        if (section !== "settings") {
+            return json(
+                { error: "POST is only supported for users or settings." },
+                405
             );
         }
 
@@ -1065,11 +1309,17 @@ Deno.serve(async (req) => {
         }
 
 
+        const { data: plans } = await sb
+            .from("plans")
+            .select("id,name,term_days")
+            .order("name", { ascending: true });
+
         return json(
             {
                 success: true,
                 section: "users",
                 users,
+                plans: plans || [],
                 total:
                     users.length
             }
