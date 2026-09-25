@@ -1,4 +1,3 @@
-```ts
 import {
     client,
     adminClient,
@@ -7,39 +6,25 @@ import {
 
 import {
     json,
-    cors
+    cors,
+    optionsResponse
 } from "../_shared/cors.ts";
 
 
-/* =========================================================
-   ADMIN EDGE FUNCTION
-========================================================= */
-
 Deno.serve(async (req) => {
 
-    /*
-     * -----------------------------------------------------
-     * CORS PREFLIGHT
-     * -----------------------------------------------------
-     */
+    /* =====================================================
+       CORS PREFLIGHT
+    ===================================================== */
 
     if (req.method === "OPTIONS") {
-
-        return new Response(
-            "ok",
-            {
-                status: 200,
-                headers: cors
-            }
-        );
+        return optionsResponse();
     }
 
 
-    /*
-     * -----------------------------------------------------
-     * ONLY GET
-     * -----------------------------------------------------
-     */
+    /* =====================================================
+       ONLY GET FOR NOW
+    ===================================================== */
 
     if (req.method !== "GET") {
 
@@ -52,11 +37,9 @@ Deno.serve(async (req) => {
     }
 
 
-    /*
-     * -----------------------------------------------------
-     * AUTHENTICATED USER
-     * -----------------------------------------------------
-     */
+    /* =====================================================
+       AUTHENTICATE USER
+    ===================================================== */
 
     const user =
         await userFrom(req);
@@ -72,13 +55,9 @@ Deno.serve(async (req) => {
     }
 
 
-    /*
-     * -----------------------------------------------------
-     * PRIVILEGED SERVER CLIENT
-     * -----------------------------------------------------
-     *
-     * This client is ONLY inside the Edge Function.
-     */
+    /* =====================================================
+       ADMIN DATABASE CLIENT
+    ===================================================== */
 
     let sb;
 
@@ -90,25 +69,23 @@ Deno.serve(async (req) => {
     } catch (error) {
 
         console.error(
-            "Admin client initialization failed:",
+            "Admin client error:",
             error
         );
 
         return json(
             {
                 error:
-                    "Admin server configuration is incomplete."
+                    "Admin server configuration error."
             },
             500
         );
     }
 
 
-    /*
-     * -----------------------------------------------------
-     * VERIFY ADMIN ROLE
-     * -----------------------------------------------------
-     */
+    /* =====================================================
+       VERIFY ADMIN ROLE
+    ===================================================== */
 
     const {
         data: profile,
@@ -152,30 +129,43 @@ Deno.serve(async (req) => {
         return json(
             {
                 error:
-                    "Administrator profile not found."
+                    "Administrator profile not found.",
+                user_id:
+                    user.id
             },
             403
         );
     }
 
 
-    if (profile.role !== "admin") {
+   if (profile.role !== "admin") {
 
-        return json(
-            {
-                error:
-                    "Admin only"
-            },
-            403
-        );
-    }
+    console.error(
+        "Admin access denied:",
+        {
+            user_id: user.id,
+            email: user.email,
+            role: profile.role
+        }
+    );
+
+    return json(
+        {
+            error: "Admin only",
+            debug: {
+                user_id: user.id,
+                email: user.email || "",
+                profile_role: profile.role || null
+            }
+        },
+        403
+    );
+}
 
 
-    /*
-     * -----------------------------------------------------
-     * QUERY PARAMETERS
-     * -----------------------------------------------------
-     */
+    /* =====================================================
+       REQUEST PARAMETERS
+    ===================================================== */
 
     const url =
         new URL(req.url);
@@ -248,22 +238,33 @@ Deno.serve(async (req) => {
         if (logsError) {
 
             console.error(
-                "Audit log error:",
+                "Audit logs error:",
                 logsError
             );
         }
 
 
-        return json(
-            {
-                success: true,
-                section: "dashboard",
-                metrics:
-                    metrics || {},
-                logs:
-                    logs || []
+        return json({
+
+            success: true,
+
+            metrics:
+                metrics || {},
+
+            logs:
+                logs || [],
+
+            admin: {
+                id: profile.id,
+                full_name:
+                    profile.full_name,
+                email:
+                    user.email || "",
+                role:
+                    profile.role
             }
-        );
+
+        });
     }
 
 
@@ -272,12 +273,6 @@ Deno.serve(async (req) => {
     ===================================================== */
 
     if (section === "users") {
-
-        /*
-         * -------------------------------------------------
-         * PROFILES
-         * -------------------------------------------------
-         */
 
         const {
             data: profiles,
@@ -313,18 +308,18 @@ Deno.serve(async (req) => {
             return json(
                 {
                     error:
-                        "Unable to load users."
+                        "Unable to load users.",
+                    details:
+                        profilesError.message
                 },
                 500
             );
         }
 
 
-        /*
-         * -------------------------------------------------
-         * SUBSCRIPTIONS
-         * -------------------------------------------------
-         */
+        /* =================================================
+           SUBSCRIPTIONS
+        ================================================= */
 
         const {
             data: subscriptions,
@@ -339,12 +334,7 @@ Deno.serve(async (req) => {
                     status,
                     subscription_ends_at,
                     started_at,
-                    created_at,
-                    razorpay_order_id,
-                    razorpay_payment_id,
-                    payment_amount,
-                    currency,
-                    last_payment_at
+                    created_at
                 `);
 
 
@@ -358,18 +348,18 @@ Deno.serve(async (req) => {
             return json(
                 {
                     error:
-                        "Unable to load subscriptions."
+                        "Unable to load subscriptions.",
+                    details:
+                        subscriptionsError.message
                 },
                 500
             );
         }
 
 
-        /*
-         * -------------------------------------------------
-         * WEBSITES
-         * -------------------------------------------------
-         */
+        /* =================================================
+           WEBSITES
+        ================================================= */
 
         const {
             data: websites,
@@ -377,15 +367,7 @@ Deno.serve(async (req) => {
         } =
             await sb
                 .from("websites")
-                .select(`
-                    id,
-                    user_id,
-                    name,
-                    url,
-                    status,
-                    created_at,
-                    last_crawled_at
-                `);
+                .select("user_id");
 
 
         if (websitesError) {
@@ -398,18 +380,18 @@ Deno.serve(async (req) => {
             return json(
                 {
                     error:
-                        "Unable to load websites."
+                        "Unable to load website statistics.",
+                    details:
+                        websitesError.message
                 },
                 500
             );
         }
 
 
-        /*
-         * -------------------------------------------------
-         * AI RUNS
-         * -------------------------------------------------
-         */
+        /* =================================================
+           AI RUNS
+        ================================================= */
 
         const {
             data: aiRuns,
@@ -417,11 +399,7 @@ Deno.serve(async (req) => {
         } =
             await sb
                 .from("ai_runs")
-                .select(`
-                    user_id,
-                    status,
-                    created_at
-                `);
+                .select("user_id");
 
 
         if (aiRunsError) {
@@ -434,18 +412,18 @@ Deno.serve(async (req) => {
             return json(
                 {
                     error:
-                        "Unable to load AI statistics."
+                        "Unable to load AI statistics.",
+                    details:
+                        aiRunsError.message
                 },
                 500
             );
         }
 
 
-        /*
-         * -------------------------------------------------
-         * WEBSITE COUNTS
-         * -------------------------------------------------
-         */
+        /* =================================================
+           WEBSITE COUNTS
+        ================================================= */
 
         const websiteCounts:
             Record<string, number> = {};
@@ -471,11 +449,9 @@ Deno.serve(async (req) => {
         }
 
 
-        /*
-         * -------------------------------------------------
-         * AI RUN COUNTS
-         * -------------------------------------------------
-         */
+        /* =================================================
+           AI RUN COUNTS
+        ================================================= */
 
         const aiRunCounts:
             Record<string, number> = {};
@@ -501,11 +477,9 @@ Deno.serve(async (req) => {
         }
 
 
-        /*
-         * -------------------------------------------------
-         * NEWEST SUBSCRIPTION PER USER
-         * -------------------------------------------------
-         */
+        /* =================================================
+           NEWEST SUBSCRIPTION PER USER
+        ================================================= */
 
         const subscriptionMap:
             Record<string, any> = {};
@@ -519,6 +493,7 @@ Deno.serve(async (req) => {
             if (!sub.user_id) {
                 continue;
             }
+
 
             const existing =
                 subscriptionMap[
@@ -543,14 +518,9 @@ Deno.serve(async (req) => {
         }
 
 
-        /*
-         * -------------------------------------------------
-         * SUPABASE AUTH USERS
-         * -------------------------------------------------
-         *
-         * IMPORTANT:
-         * adminClient() is required here.
-         */
+        /* =================================================
+           AUTH USERS
+        ================================================= */
 
         const authUsers:
             Record<string, any> = {};
@@ -601,8 +571,7 @@ Deno.serve(async (req) => {
 
                 authUsers[
                     authUser.id
-                ] =
-                    authUser;
+                ] = authUser;
             }
 
 
@@ -620,15 +589,13 @@ Deno.serve(async (req) => {
         }
 
 
-        /*
-         * -------------------------------------------------
-         * COMBINE DATA
-         * -------------------------------------------------
-         */
+        /* =================================================
+           COMBINE USER DATA
+        ================================================= */
 
         let users =
-            (profiles || []).map(
-                (profile) => {
+            (profiles || [])
+                .map((profile) => {
 
                     const subscription =
                         subscriptionMap[
@@ -648,12 +615,10 @@ Deno.serve(async (req) => {
                             profile.id,
 
                         full_name:
-                            profile.full_name ||
-                            "",
+                            profile.full_name || "",
 
                         email:
-                            authUser?.email ||
-                            "",
+                            authUser?.email || "",
 
                         phone:
                             profile.phone ||
@@ -688,26 +653,6 @@ Deno.serve(async (req) => {
                             subscription?.started_at ||
                             null,
 
-                        razorpay_order_id:
-                            subscription?.razorpay_order_id ||
-                            null,
-
-                        razorpay_payment_id:
-                            subscription?.razorpay_payment_id ||
-                            null,
-
-                        payment_amount:
-                            subscription?.payment_amount ||
-                            null,
-
-                        currency:
-                            subscription?.currency ||
-                            "INR",
-
-                        last_payment_at:
-                            subscription?.last_payment_at ||
-                            null,
-
                         websites:
                             websiteCounts[
                                 profile.id
@@ -724,15 +669,12 @@ Deno.serve(async (req) => {
                         updated_at:
                             profile.updated_at
                     };
-                }
-            );
+                });
 
 
-        /*
-         * -------------------------------------------------
-         * SEARCH
-         * -------------------------------------------------
-         */
+        /* =================================================
+           SEARCH
+        ================================================= */
 
         if (search) {
 
@@ -770,15 +712,16 @@ Deno.serve(async (req) => {
         }
 
 
-        return json(
-            {
-                success: true,
-                section: "users",
-                users,
-                total:
-                    users.length
-            }
-        );
+        return json({
+
+            success: true,
+
+            users,
+
+            total:
+                users.length
+
+        });
     }
 
 
@@ -789,10 +732,10 @@ Deno.serve(async (req) => {
     return json(
         {
             error:
-                "Unknown admin section."
+                "Unknown admin section.",
+            section
         },
         400
     );
 
 });
-```
