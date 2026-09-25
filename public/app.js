@@ -1,16 +1,12 @@
 const C = window.OBSEDIAN_CONFIG || {};
 
-const sb = supabase.createClient(
-    C.SUPABASE_URL,
-    C.SUPABASE_PUBLISHABLE_KEY,
-    {
-        auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true
-        }
+const sb = supabase.createClient(C.SUPABASE_URL, C.SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
     }
-);
+});
 
 const $ = x => document.getElementById(x);
 
@@ -19,43 +15,21 @@ let currentSites = [];
 let loading = false;
 
 
-/* =========================================================
-   LOGIN / ADMIN REDIRECT HELPERS
-========================================================= */
-
-/*
- * Determine where the user should go after authentication.
- *
- * Normal login:
- *      /app/
- *
- * Admin login:
- *      /admin/
- *
- * The admin page sends unauthenticated users to:
- *
- *      /app/?redirect=/admin/
- *
- * We preserve that destination during the login process.
- */
+/* =========================
+   AUTH / REDIRECT HELPERS
+========================= */
 
 function getRequestedRedirect() {
 
     const params =
-        new URLSearchParams(
-            window.location.search
-        );
+        new URLSearchParams(window.location.search);
 
     const redirect =
         params.get("redirect");
 
     /*
-     * Only allow known internal destinations.
-     *
-     * This prevents an arbitrary external URL from
-     * being used as an authentication redirect.
+     * Only allow our own internal Admin route.
      */
-
     if (
         redirect === "/admin/" ||
         redirect === "/admin"
@@ -64,23 +38,29 @@ function getRequestedRedirect() {
     }
 
     /*
-     * Also support the sessionStorage flag used when
-     * the Admin page sends the user to the login page.
+     * If Admin login started before the query string
+     * was available, recover the destination from
+     * sessionStorage.
      */
+    try {
 
-    if (
-        sessionStorage.getItem(
-            "obsedian_admin_login"
-        ) === "1"
-    ) {
-        return "/admin/";
+        if (
+            sessionStorage.getItem(
+                "obsedian_admin_login"
+            ) === "1"
+        ) {
+            return "/admin/";
+        }
+
+    } catch (_) {
+        // Ignore storage errors.
     }
 
     return "/app/";
 }
 
 
-function getAuthRedirectUrl() {
+function authRedirectUrl() {
 
     return (
         window.location.origin +
@@ -89,84 +69,88 @@ function getAuthRedirectUrl() {
 }
 
 
-function goAfterLogin() {
-
-    const destination =
-        getRequestedRedirect();
+function rememberAdminLogin() {
 
     if (
-        destination === "/admin/"
+        getRequestedRedirect() !== "/admin/"
     ) {
+        return;
+    }
 
-        /*
-         * Remove the temporary marker before
-         * leaving the application.
-         */
+    try {
+
+        sessionStorage.setItem(
+            "obsedian_admin_login",
+            "1"
+        );
+
+    } catch (_) {
+        // Ignore storage errors.
+    }
+}
+
+
+function clearAdminLoginMarker() {
+
+    try {
 
         sessionStorage.removeItem(
             "obsedian_admin_login"
         );
 
-        console.log(
-            "Authentication complete. Returning to Admin Panel."
-        );
-
-        window.location.replace(
-            "/admin/"
-        );
-
-        return true;
+    } catch (_) {
+        // Ignore storage errors.
     }
-
-    return false;
 }
 
 
-/*
- * This helper is useful if the browser returns from
- * a magic link or OAuth callback with an existing session.
- */
+function goAfterLogin() {
 
-function handleAuthCallbackRedirect() {
+    if (
+        getRequestedRedirect() !== "/admin/"
+    ) {
+        return false;
+    }
+
+    clearAdminLoginMarker();
+
+    window.location.replace(
+        "/admin/"
+    );
+
+    return true;
+}
+
+
+function hasAuthCallback() {
 
     const params =
         new URLSearchParams(
             window.location.search
         );
 
-    const hasAuthCallback =
+    return (
         params.has("code") ||
         window.location.hash.includes(
             "access_token="
         ) ||
         window.location.hash.includes(
             "refresh_token="
-        );
-
-    if (!hasAuthCallback) {
-        return false;
-    }
-
-    return getRequestedRedirect() === "/admin/";
+        )
+    );
 }
 
 
-/* =========================================================
+/* =========================
    AUTH / BOOT
-========================================================= */
+========================= */
 
 async function boot() {
 
     try {
 
-        /*
-         * First check the existing browser session.
-         */
-
         const {
-            data: {
-                session: currentSession
-            },
+            data,
             error
         } =
             await sb.auth.getSession();
@@ -180,35 +164,41 @@ async function boot() {
         }
 
         session =
-            currentSession || null;
+            data?.session || null;
+
 
         /*
-         * If this page was reached through a magic
-         * link / OAuth callback and the requested
-         * destination is Admin, allow Supabase to
-         * finish processing the callback first.
+         * If an already-authenticated user follows
+         * the Admin login route, return to Admin.
          */
-
         if (
             session &&
-            handleAuthCallbackRedirect()
+            getRequestedRedirect() === "/admin/" &&
+            (
+                hasAuthCallback() ||
+                new URLSearchParams(
+                    location.search
+                ).has("redirect")
+            )
         ) {
-
-            console.log(
-                "Authenticated admin callback detected."
-            );
 
             goAfterLogin();
 
             return;
         }
 
+
         paint();
 
-        /*
-         * Listen for magic-link / OAuth / logout events.
-         */
 
+        /*
+         * Listen for:
+         * - Password login
+         * - Magic link
+         * - OAuth
+         * - Phone OTP
+         * - Logout
+         */
         sb.auth.onAuthStateChange(
             async (
                 event,
@@ -223,20 +213,16 @@ async function boot() {
                 session =
                     newSession || null;
 
-                /*
-                 * SIGNED_IN can happen after a magic
-                 * link or OAuth callback.
-                 *
-                 * If the login originated from the
-                 * Admin page, return there instead
-                 * of loading the normal dashboard.
-                 */
 
                 if (
                     event === "SIGNED_IN" &&
                     session
                 ) {
 
+                    /*
+                     * If authentication started
+                     * from Admin, return there.
+                     */
                     if (
                         goAfterLogin()
                     ) {
@@ -245,15 +231,22 @@ async function boot() {
 
                     paint();
 
-                    await load();
+                    if (!loading) {
+                        await load();
+                    }
 
                     return;
                 }
 
-                /*
-                 * SIGNED_OUT should show the normal
-                 * login screen.
-                 */
+
+                if (
+                    event === "SIGNED_OUT"
+                ) {
+
+                    session = null;
+                    currentSites = [];
+                }
+
 
                 paint();
             }
@@ -273,36 +266,33 @@ async function boot() {
 }
 
 
-/* =========================================================
+/* =========================
    PAINT LOGIN / DASHBOARD
-========================================================= */
+========================= */
 
 function paint() {
 
     const loggedIn =
         !!session;
 
-    const login =
-        $("login");
 
-    const dash =
-        $("dash");
+    if ($("login")) {
 
-    if (login) {
-
-        login.classList.toggle(
+        $("login").classList.toggle(
             "hidden",
             loggedIn
         );
     }
 
-    if (dash) {
 
-        dash.classList.toggle(
+    if ($("dash")) {
+
+        $("dash").classList.toggle(
             "hidden",
             !loggedIn
         );
     }
+
 
     if (
         loggedIn &&
@@ -314,87 +304,67 @@ function paint() {
 }
 
 
-/* =========================================================
+/* =========================
    GOOGLE / GITHUB
-========================================================= */
+========================= */
 
 async function oauth(
     provider
 ) {
 
-    try {
+    /*
+     * Remember Admin destination
+     * before leaving the page.
+     */
+    rememberAdminLogin();
+
+
+    const {
+        error
+    } =
+        await sb.auth.signInWithOAuth({
+
+            provider,
+
+            options: {
+
+                redirectTo:
+                    authRedirectUrl()
+
+            }
+        });
+
+
+    if (
+        error &&
+        $("msg")
+    ) {
 
         $("msg").textContent =
-            "Connecting to " +
-            provider +
-            "...";
-
-        const {
-            error
-        } =
-            await sb.auth.signInWithOAuth({
-                provider,
-
-                options: {
-                    /*
-                     * IMPORTANT:
-                     *
-                     * Previously this was always:
-                     *
-                     * /app/
-                     *
-                     * It now respects the page from
-                     * which authentication started.
-                     */
-
-                    redirectTo:
-                        getAuthRedirectUrl()
-                }
-            });
-
-        if (error) {
-
-            console.error(
-                "OAuth error:",
-                error
-            );
-
-            $("msg").textContent =
-                error.message ||
-                "OAuth login failed.";
-        }
-
-    } catch (error) {
-
-        console.error(
-            "OAuth exception:",
-            error
-        );
-
-        $("msg").textContent =
-            error?.message ||
-            "OAuth login failed.";
+            error.message;
     }
 }
 
 
 if ($("google")) {
 
-    $("google").onclick = () =>
-        oauth("google");
+    $("google").onclick =
+        () =>
+            oauth("google");
 }
 
 
 if ($("github")) {
 
-    $("github").onclick = () =>
-        oauth("github");
+    $("github").onclick =
+        () =>
+            oauth("github");
 }
 
 
-/* =========================================================
+/* =========================
    EMAIL + PASSWORD LOGIN
-========================================================= */
+========================= */
 
 if ($("passwordBtn")) {
 
@@ -407,6 +377,7 @@ if ($("passwordBtn")) {
             const password =
                 $("password").value;
 
+
             if (!email) {
 
                 $("msg").textContent =
@@ -414,6 +385,7 @@ if ($("passwordBtn")) {
 
                 return;
             }
+
 
             if (!password) {
 
@@ -423,11 +395,19 @@ if ($("passwordBtn")) {
                 return;
             }
 
+
+            /*
+             * Preserve Admin destination.
+             */
+            rememberAdminLogin();
+
+
             $("passwordBtn").disabled =
                 true;
 
             $("msg").textContent =
                 "Signing in...";
+
 
             try {
 
@@ -436,9 +416,13 @@ if ($("passwordBtn")) {
                     error
                 } =
                     await sb.auth.signInWithPassword({
+
                         email,
+
                         password
+
                     });
+
 
                 if (error) {
 
@@ -454,27 +438,37 @@ if ($("passwordBtn")) {
                     return;
                 }
 
+
                 session =
                     data?.session || null;
+
+
+                if (!session) {
+
+                    $("msg").textContent =
+                        "Login completed, but no session was returned.";
+
+                    return;
+                }
+
 
                 $("msg").textContent =
                     "Signed in successfully.";
 
-                /*
-                 * IMPORTANT:
-                 *
-                 * If the login started from /admin/,
-                 * immediately return to /admin/.
-                 *
-                 * The Admin Edge Function will then
-                 * verify the user's role.
-                 */
 
+                /*
+                 * Admin login:
+                 *
+                 * /app/?redirect=/admin/
+                 *          ↓
+                 *       /admin/
+                 */
                 if (
                     goAfterLogin()
                 ) {
                     return;
                 }
+
 
                 paint();
 
@@ -498,9 +492,9 @@ if ($("passwordBtn")) {
 }
 
 
-/* =========================================================
+/* =========================
    EMAIL MAGIC LINK
-========================================================= */
+========================= */
 
 if ($("emailBtn")) {
 
@@ -510,6 +504,7 @@ if ($("emailBtn")) {
             const email =
                 $("email").value.trim();
 
+
             if (!email) {
 
                 $("msg").textContent =
@@ -518,11 +513,27 @@ if ($("emailBtn")) {
                 return;
             }
 
+
+            /*
+             * Determine where the user should
+             * return after clicking the email.
+             */
+            const destination =
+                getRequestedRedirect();
+
+
+            /*
+             * Preserve Admin login state.
+             */
+            rememberAdminLogin();
+
+
             $("emailBtn").disabled =
                 true;
 
             $("msg").textContent =
                 "Sending email link...";
+
 
             try {
 
@@ -535,27 +546,30 @@ if ($("emailBtn")) {
 
                         options: {
 
-                            /*
-                             * IMPORTANT:
-                             *
-                             * Admin login:
-                             *      /admin/
-                             *
-                             * Normal login:
-                             *      /app/
-                             */
-
                             emailRedirectTo:
-                                getAuthRedirectUrl()
+                                window.location.origin +
+                                destination
+
                         }
+
                     });
+
 
                 if (error) {
 
                     console.error(
-                        "Email login error:",
+                        "Email magic-link error:",
                         error
                     );
+
+
+                    if (
+                        destination === "/admin/"
+                    ) {
+
+                        clearAdminLoginMarker();
+                    }
+
 
                     $("msg").textContent =
                         error.message ||
@@ -563,6 +577,7 @@ if ($("emailBtn")) {
 
                     return;
                 }
+
 
                 $("msg").textContent =
                     "Email link sent. Please check your inbox.";
@@ -587,9 +602,9 @@ if ($("emailBtn")) {
 }
 
 
-/* =========================================================
+/* =========================
    PHONE OTP
-========================================================= */
+========================= */
 
 if ($("phoneBtn")) {
 
@@ -599,6 +614,7 @@ if ($("phoneBtn")) {
             const phone =
                 $("phone").value.trim();
 
+
             if (!phone) {
 
                 $("msg").textContent =
@@ -607,11 +623,16 @@ if ($("phoneBtn")) {
                 return;
             }
 
+
+            rememberAdminLogin();
+
+
             $("phoneBtn").disabled =
                 true;
 
             $("msg").textContent =
                 "Sending OTP...";
+
 
             try {
 
@@ -622,27 +643,15 @@ if ($("phoneBtn")) {
                         phone
                     });
 
-                if (error) {
-
-                    console.error(
-                        "Phone OTP error:",
-                        error
-                    );
-
-                    $("msg").textContent =
-                        error.message ||
-                        "Unable to send OTP.";
-
-                    return;
-                }
 
                 $("msg").textContent =
+                    error?.message ||
                     "OTP sent.";
 
             } catch (error) {
 
                 console.error(
-                    "Phone OTP exception:",
+                    "Phone OTP error:",
                     error
                 );
 
@@ -659,47 +668,31 @@ if ($("phoneBtn")) {
 }
 
 
-/* =========================================================
+/* =========================
    LOGOUT
-========================================================= */
+========================= */
 
 if ($("logout")) {
 
     $("logout").onclick =
         async () => {
 
-            try {
+            await sb.auth.signOut();
 
-                await sb.auth.signOut();
-
-            } catch (error) {
-
-                console.error(
-                    "Logout error:",
-                    error
-                );
-            }
+            clearAdminLoginMarker();
 
             session = null;
+
             currentSites = [];
-
-            /*
-             * Make sure an old admin-login marker
-             * cannot affect a normal future login.
-             */
-
-            sessionStorage.removeItem(
-                "obsedian_admin_login"
-            );
 
             paint();
         };
 }
 
 
-/* =========================================================
+/* =========================
    PLAN / BILLING HELPERS
-========================================================= */
+========================= */
 
 function daysRemaining(
     endsAt
@@ -741,8 +734,7 @@ function isPlanExpired(
     return (
         new Date(
             sub.subscription_ends_at
-        ) <=
-        new Date()
+        ) <= new Date()
     );
 }
 
@@ -753,6 +745,7 @@ function openUpgrade() {
         $("upgradeModal");
 
     if (modal) {
+
         modal.classList.remove(
             "hidden"
         );
@@ -766,6 +759,7 @@ function closeUpgrade() {
         $("upgradeModal");
 
     if (modal) {
+
         modal.classList.add(
             "hidden"
         );
@@ -780,9 +774,9 @@ window.closeUpgrade =
     closeUpgrade;
 
 
-/* =========================================================
+/* =========================
    LOAD DASHBOARD
-========================================================= */
+========================= */
 
 async function load() {
 
@@ -793,23 +787,24 @@ async function load() {
         return;
     }
 
+
     loading = true;
+
 
     try {
 
         const u =
             session.user;
 
-        if ($("hello")) {
 
-            $("hello").textContent =
-                "Welcome, " +
-                (
-                    u.user_metadata?.full_name ||
-                    u.email ||
-                    "there"
-                );
-        }
+        $("hello").textContent =
+            "Welcome, " +
+            (
+                u.user_metadata?.full_name ||
+                u.email ||
+                "there"
+            );
+
 
         const [
             subR,
@@ -899,91 +894,87 @@ async function load() {
         const sub =
             subR.data;
 
+
         const sites =
             siteR.data || [];
+
 
         currentSites =
             sites;
 
 
-        if ($("badge")) {
-
-            $("badge").textContent =
-                sub?.plans?.name ||
-                "Free";
-        }
+        $("badge").textContent =
+            sub?.plans?.name ||
+            "Free";
 
 
-        if ($("stats")) {
+        $("stats").innerHTML = [
 
-            $("stats").innerHTML = [
+            [
+                "Websites",
+                sites.length
+            ],
 
-                [
-                    "Websites",
-                    sites.length
-                ],
+            [
+                "Limit",
+                sub?.plans?.max_websites ||
+                0
+            ],
 
-                [
-                    "Limit",
-                    sub?.plans?.max_websites ||
-                    0
-                ],
+            [
+                "Status",
+                sub?.status ||
+                "—"
+            ],
 
-                [
-                    "Status",
-                    sub?.status ||
-                    "—"
-                ],
-
-                [
-                    "Ends",
-                    sub?.subscription_ends_at
-                        ? new Date(
-                            sub.subscription_ends_at
-                        ).toLocaleDateString()
-                        : "—"
-                ]
-
+            [
+                "Ends",
+                sub?.subscription_ends_at
+                    ? new Date(
+                        sub.subscription_ends_at
+                    ).toLocaleDateString()
+                    : "—"
             ]
-            .map(
-                x =>
-                    `<div class="stat">
-                        <small>${x[0]}</small><br>
-                        <b>${x[1]}</b>
-                    </div>`
-            )
-            .join("");
-        }
+
+        ]
+        .map(
+            x =>
+                `<div class="stat">
+                    <small>${x[0]}</small><br>
+                    <b>${x[1]}</b>
+                </div>`
+        )
+        .join("");
 
 
-        if ($("sites")) {
+        $("sites").innerHTML =
 
-            $("sites").innerHTML =
-                sites
-                    .map(
-                        s =>
-                            `<div class="item">
-                                <b>${s.name || s.url}</b><br>
-                                <small>
-                                    ${s.url} · ${s.status}
-                                </small>
-                            </div>`
-                    )
-                    .join("")
+            sites
+                .map(
+                    s =>
+                        `<div class="item">
+                            <b>${s.name || s.url}</b><br>
+                            <small>
+                                ${s.url} · ${s.status}
+                            </small>
+                        </div>`
+                )
+                .join("")
 
-                ||
-                "<p>No websites yet.</p>";
-        }
+            ||
+            "<p>No websites yet.</p>";
 
 
         const planName =
             sub?.plans?.name ||
             "Free";
 
+
         const remainingDays =
             daysRemaining(
                 sub?.subscription_ends_at
             );
+
 
         const expired =
             isPlanExpired(sub) ||
@@ -991,192 +982,193 @@ async function load() {
             sub?.status === "expired";
 
 
-        if ($("billing")) {
+        $("billing").innerHTML =
+            sub
+                ? `
+                <div class="billing-summary">
 
-            $("billing").innerHTML =
-                sub
-                    ? `
-                        <div class="billing-summary">
+                    <div>
 
-                            <div>
+                        <strong>
+                            ${planName}
+                        </strong>
 
-                                <strong>
-                                    ${planName}
-                                </strong>
+                        <span
+                            class="billing-status ${
+                                expired
+                                    ? "expired"
+                                    : "active"
+                            }"
+                        >
+                            ${
+                                expired
+                                    ? "Expired / Paused"
+                                    : sub.status
+                            }
+                        </span>
 
-                                <span
-                                    class="billing-status ${
-                                        expired
-                                            ? "expired"
-                                            : "active"
-                                    }"
-                                >
+                    </div>
+
+                    <p>
+
+                        ${
+                            sub.plans?.max_websites ||
+                            0
+                        }
+
+                        website${
+                            (
+                                sub.plans?.max_websites ||
+                                0
+                            ) === 1
+                                ? ""
+                                : "s"
+                        }
+
+                        · ends
+
+                        ${
+                            sub.subscription_ends_at
+                                ? new Date(
+                                    sub.subscription_ends_at
+                                ).toLocaleDateString()
+                                : "—"
+                        }
+
+                    </p>
+
+                    ${
+                        planName === "Free" &&
+                        !expired
+
+                            ? `
+                            <div class="trial-box">
+
+                                <b>
                                     ${
-                                        expired
-                                            ? "Expired / Paused"
-                                            : sub.status
+                                        remainingDays
                                     }
+                                    days remaining
+                                </b>
+
+                                <span>
+                                    Free plan · 45-day trial
                                 </span>
 
                             </div>
+                            `
 
-                            <p>
-                                ${
-                                    sub.plans?.max_websites ||
-                                    0
-                                }
-                                website${
-                                    (
-                                        sub.plans?.max_websites ||
-                                        0
-                                    ) === 1
-                                        ? ""
-                                        : "s"
-                                }
+                            : ""
+                    }
 
-                                · ends
+                    ${
+                        planName === "Free" ||
+                        expired
 
-                                ${
-                                    sub.subscription_ends_at
-                                        ? new Date(
-                                            sub.subscription_ends_at
-                                        ).toLocaleDateString()
-                                        : "—"
-                                }
-
-                            </p>
-
-                            ${
-                                planName === "Free" &&
-                                !expired
-                                    ? `
-                                        <div class="trial-box">
-
-                                            <b>
-                                                ${remainingDays}
-                                                days remaining
-                                            </b>
-
-                                            <span>
-                                                Free plan ·
-                                                45-day trial
-                                            </span>
-
-                                        </div>
-                                    `
-                                    : ""
-                            }
-
-                            ${
-                                planName === "Free" ||
-                                expired
-                                    ? `
-                                        <button
-                                            class="upgrade-btn"
-                                            type="button"
-                                            onclick="openUpgrade()"
-                                        >
-                                            Upgrade Plan
-                                        </button>
-                                    `
-                                    : ""
-                            }
-
-                        </div>
-                    `
-                    :
-                    `
-                        <div class="billing-summary">
-
-                            <p>
-                                No active plan found.
-                            </p>
-
+                            ? `
                             <button
                                 class="upgrade-btn"
                                 type="button"
                                 onclick="openUpgrade()"
                             >
-                                Choose a Plan
+                                Upgrade Plan
                             </button>
+                            `
 
-                        </div>
-                    `;
-        }
+                            : ""
+                    }
+
+                </div>
+                `
+
+                :
+
+                `
+                <div class="billing-summary">
+
+                    <p>
+                        No active plan found.
+                    </p>
+
+                    <button
+                        class="upgrade-btn"
+                        type="button"
+                        onclick="openUpgrade()"
+                    >
+                        Choose a Plan
+                    </button>
+
+                </div>
+                `;
 
 
-        if ($("approvals")) {
+        $("approvals").innerHTML =
 
-            $("approvals").innerHTML =
+            (apR.data || [])
+                .map(
+                    a =>
+                        `<div class="item">
 
-                (apR.data || [])
-                    .map(
-                        a =>
-                            `<div class="item">
+                            <b>
+                                ${a.title}
+                            </b>
 
-                                <b>
-                                    ${a.title}
-                                </b>
+                            <br>
 
-                                <br>
+                            ${
+                                a.description ||
+                                ""
+                            }
 
-                                ${a.description || ""}
+                            <br>
 
-                                <br>
-
-                                <small>
-                                    ${a.status}
-                                    ·
-                                    ${a.risk_level}
-                                </small>
-
+                            <small>
                                 ${
-                                    a.status === "pending"
-                                        ? `
-
-                                            <button
-                                                onclick="approve('${a.id}')"
-                                            >
-                                                Approve
-                                            </button>
-
-                                            <button
-                                                onclick="reject('${a.id}')"
-                                            >
-                                                Reject
-                                            </button>
-
-                                        `
-                                        : ""
+                                    a.status
                                 }
+                                ·
+                                ${
+                                    a.risk_level
+                                }
+                            </small>
 
-                            </div>`
-                    )
-                    .join("")
+                            ${
+                                a.status === "pending"
 
-                ||
-                "<p>No pending approvals.</p>";
-    }
+                                    ? `
+                                    <button
+                                        onclick="approve('${a.id}')"
+                                    >
+                                        Approve
+                                    </button>
 
-    catch (error) {
+                                    <button
+                                        onclick="reject('${a.id}')"
+                                    >
+                                        Reject
+                                    </button>
+                                    `
 
-        console.error(
-            "Dashboard load error:",
-            error
-        );
+                                    : ""
+                            }
 
-    }
+                        </div>`
+                )
+                .join("")
 
-    finally {
+            ||
+            "<p>No pending approvals.</p>";
+
+    } finally {
 
         loading = false;
     }
 }
 
 
-/* =========================================================
+/* =========================
    ADD WEBSITE
-========================================================= */
+========================= */
 
 if ($("add")) {
 
@@ -1192,11 +1184,14 @@ if ($("add")) {
                 return;
             }
 
+
             const url =
                 $("url").value.trim();
 
+
             const name =
                 $("name").value.trim();
+
 
             if (!url) {
 
@@ -1207,7 +1202,9 @@ if ($("add")) {
                 return;
             }
 
+
             let normalizedUrl;
+
 
             try {
 
@@ -1273,9 +1270,9 @@ if ($("add")) {
 }
 
 
-/* =========================================================
+/* =========================
    AI AGENTS
-========================================================= */
+========================= */
 
 async function agent(
     agent,
@@ -1292,11 +1289,10 @@ async function agent(
         return;
     }
 
-    if ($("out")) {
 
-        $("out").textContent =
-            "AI agent running…";
-    }
+    $("out").textContent =
+        "AI agent running…";
+
 
     try {
 
@@ -1311,18 +1307,15 @@ async function agent(
 
         if (!currentSession) {
 
-            if ($("out")) {
-
-                $("out").textContent =
-                    JSON.stringify(
-                        {
-                            error:
-                                "You are not logged in."
-                        },
-                        null,
-                        2
-                    );
-            }
+            $("out").textContent =
+                JSON.stringify(
+                    {
+                        error:
+                            "You are not logged in."
+                    },
+                    null,
+                    2
+                );
 
             return;
         }
@@ -1332,6 +1325,7 @@ async function agent(
             await fetch(
                 "/api/ai",
                 {
+
                     method:
                         "POST",
 
@@ -1344,6 +1338,7 @@ async function agent(
 
                         "Content-Type":
                             "application/json"
+
                     },
 
                     body:
@@ -1366,15 +1361,17 @@ async function agent(
                             }
 
                         })
+
                 }
             );
 
 
         /*
-         * Read as TEXT first.
+         * Read the response as TEXT first.
          *
-         * This prevents JSON parsing errors when
-         * Cloudflare/Supabase returns an HTML error.
+         * This allows us to display useful
+         * Cloudflare/server errors even when
+         * the server does not return JSON.
          */
 
         const responseText =
@@ -1382,6 +1379,7 @@ async function agent(
 
 
         let data;
+
 
         try {
 
@@ -1410,21 +1408,19 @@ async function agent(
         }
 
 
-        if ($("out")) {
-
-            $("out").textContent =
-                JSON.stringify(
-                    data,
-                    null,
-                    2
-                );
-        }
+        $("out").textContent =
+            JSON.stringify(
+                data,
+                null,
+                2
+            );
 
 
         if (response.ok) {
 
             await load();
         }
+
 
     } catch (error) {
 
@@ -1433,30 +1429,29 @@ async function agent(
             error
         );
 
-        if ($("out")) {
 
-            $("out").textContent =
-                JSON.stringify(
-                    {
-                        error:
-                            "AI request failed",
+        $("out").textContent =
+            JSON.stringify(
+                {
 
-                        details:
-                            error?.message ||
-                            String(error)
+                    error:
+                        "AI request failed",
 
-                    },
-                    null,
-                    2
-                );
-        }
+                    details:
+                        error?.message ||
+                        String(error)
+
+                },
+                null,
+                2
+            );
     }
 }
 
 
-/* =========================================================
+/* =========================
    AI BUTTONS
-========================================================= */
+========================= */
 
 if ($("audit")) {
 
@@ -1500,13 +1495,19 @@ if ($("report")) {
 }
 
 
-/* =========================================================
+/* =========================
    BILLING
-========================================================= */
+========================= */
 
 /*
- * Paid checkout buttons are handled by the Upgrade Modal.
+ * Paid checkout buttons are handled
+ * by the Upgrade Modal below.
  */
+
+
+/* =========================
+   UPGRADE MODAL
+========================= */
 
 document
     .querySelectorAll(
@@ -1540,6 +1541,7 @@ document
                     const plan =
                         button.dataset.plan;
 
+
                     const billingCycle =
                         button.dataset.billing ||
                         "monthly";
@@ -1547,6 +1549,7 @@ document
 
                     button.disabled =
                         true;
+
 
                     button.textContent =
                         "Opening checkout…";
@@ -1558,18 +1561,20 @@ document
                             await fetch(
                                 "/api/checkout",
                                 {
+
                                     method:
                                         "POST",
 
                                     headers: {
 
-                                        Authorization:
+                                        "Authorization":
                                             `Bearer ${
                                                 currentSession.access_token
                                             }`,
 
                                         "Content-Type":
                                             "application/json"
+
                                     },
 
                                     body:
@@ -1581,6 +1586,7 @@ document
                                                 billingCycle
 
                                         })
+
                                 }
                             );
 
@@ -1605,22 +1611,20 @@ document
                             "Checkout is not configured yet. Connect the Razorpay checkout endpoint before accepting payments."
                         );
 
-                    } catch (error) {
 
-                        console.error(
-                            "Checkout error:",
-                            error
-                        );
+                    } catch (error) {
 
                         alert(
                             error?.message ||
                             "Could not start checkout."
                         );
 
+
                     } finally {
 
                         button.disabled =
                             false;
+
 
                         button.textContent =
                             billingCycle === "yearly"
@@ -1661,9 +1665,9 @@ if ($("upgradeModal")) {
 }
 
 
-/* =========================================================
+/* =========================
    SUPPORT
-========================================================= */
+========================= */
 
 if ($("ticket")) {
 
@@ -1684,9 +1688,7 @@ if ($("ticket")) {
                 error
             } =
                 await sb
-                    .from(
-                        "support_tickets"
-                    )
+                    .from("support_tickets")
                     .insert({
 
                         user_id:
@@ -1709,61 +1711,33 @@ if ($("ticket")) {
 }
 
 
-/* =========================================================
+/* =========================
    APPROVALS
-========================================================= */
+========================= */
 
 window.approve =
     async id => {
 
-        if (!session) {
+        await sb
+            .from("approvals")
+            .update({
 
-            alert(
-                "Please sign in first."
+                status:
+                    "approved",
+
+                approved_at:
+                    new Date()
+                        .toISOString()
+
+            })
+            .eq(
+                "id",
+                id
+            )
+            .eq(
+                "user_id",
+                session.user.id
             );
-
-            return;
-        }
-
-
-        const {
-            error
-        } =
-            await sb
-                .from("approvals")
-                .update({
-
-                    status:
-                        "approved",
-
-                    approved_at:
-                        new Date()
-                            .toISOString()
-
-                })
-                .eq(
-                    "id",
-                    id
-                )
-                .eq(
-                    "user_id",
-                    session.user.id
-                );
-
-
-        if (error) {
-
-            console.error(
-                "Approval update error:",
-                error
-            );
-
-            alert(
-                error.message
-            );
-
-            return;
-        }
 
 
         await load();
@@ -1773,58 +1747,30 @@ window.approve =
 window.reject =
     async id => {
 
-        if (!session) {
+        await sb
+            .from("approvals")
+            .update({
 
-            alert(
-                "Please sign in first."
+                status:
+                    "rejected"
+
+            })
+            .eq(
+                "id",
+                id
+            )
+            .eq(
+                "user_id",
+                session.user.id
             );
-
-            return;
-        }
-
-
-        const {
-            error
-        } =
-            await sb
-                .from("approvals")
-                .update({
-
-                    status:
-                        "rejected"
-
-                })
-                .eq(
-                    "id",
-                    id
-                )
-                .eq(
-                    "user_id",
-                    session.user.id
-                );
-
-
-        if (error) {
-
-            console.error(
-                "Approval rejection error:",
-                error
-            );
-
-            alert(
-                error.message
-            );
-
-            return;
-        }
 
 
         await load();
     };
 
 
-/* =========================================================
+/* =========================
    START
-========================================================= */
+========================= */
 
 boot();
