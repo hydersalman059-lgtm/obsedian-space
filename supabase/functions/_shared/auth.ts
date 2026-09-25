@@ -1,22 +1,50 @@
+```ts
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+
 /* =========================================================
-   SUPABASE KEY
+   SUPABASE URL
 ========================================================= */
 
-function getSupabaseKey(): string {
+function getSupabaseUrl(): string {
+
+    const url =
+        Deno.env.get("SUPABASE_URL");
+
+    if (!url) {
+        throw new Error(
+            "SUPABASE_URL is missing."
+        );
+    }
+
+    return url;
+}
+
+
+/* =========================================================
+   PUBLIC / PUBLISHABLE KEY
+========================================================= */
+
+function getPublishableKey(): string {
+
     const publishableKeysRaw =
         Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
 
     if (publishableKeysRaw) {
+
         try {
+
             const publishableKeys =
-                JSON.parse(publishableKeysRaw);
+                JSON.parse(
+                    publishableKeysRaw
+                );
 
             if (publishableKeys?.default) {
                 return publishableKeys.default;
             }
+
         } catch (error) {
+
             console.error(
                 "Could not parse SUPABASE_PUBLISHABLE_KEYS:",
                 error
@@ -24,8 +52,19 @@ function getSupabaseKey(): string {
         }
     }
 
+    const publishableKey =
+        Deno.env.get(
+            "SUPABASE_PUBLISHABLE_KEY"
+        );
+
+    if (publishableKey) {
+        return publishableKey;
+    }
+
     const anonKey =
-        Deno.env.get("SUPABASE_ANON_KEY");
+        Deno.env.get(
+            "SUPABASE_ANON_KEY"
+        );
 
     if (anonKey) {
         return anonKey;
@@ -38,43 +77,107 @@ function getSupabaseKey(): string {
 
 
 /* =========================================================
-   BASIC SUPABASE CLIENT
+   SERVICE ROLE / SECRET KEY
 ========================================================= */
 
-export function client() {
+function getServiceRoleKey(): string {
 
-    const supabaseUrl =
-        Deno.env.get("SUPABASE_URL");
+    /*
+     * Prefer the existing variable used by this project.
+     */
 
-    if (!supabaseUrl) {
-        throw new Error(
-            "SUPABASE_URL is missing."
+    const serviceRole =
+        Deno.env.get(
+            "SUPABASE_SERVICE_ROLE_KEY"
         );
+
+    if (serviceRole) {
+        return serviceRole;
     }
 
-    return createClient(
-        supabaseUrl,
-        getSupabaseKey()
+    /*
+     * Support Supabase's newer secret-key naming as well.
+     */
+
+    const secretKey =
+        Deno.env.get(
+            "SUPABASE_SECRET_KEY"
+        );
+
+    if (secretKey) {
+        return secretKey;
+    }
+
+    /*
+     * Legacy fallback.
+     */
+
+    const serviceRoleLegacy =
+        Deno.env.get(
+            "SERVICE_ROLE_KEY"
+        );
+
+    if (serviceRoleLegacy) {
+        return serviceRoleLegacy;
+    }
+
+    throw new Error(
+        "SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SECRET_KEY is missing."
     );
 }
 
 
 /* =========================================================
-   AUTHENTICATED USER CLIENT
+   NORMAL CLIENT
+========================================================= */
+
+export function client() {
+
+    return createClient(
+        getSupabaseUrl(),
+        getPublishableKey(),
+        {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false
+            }
+        }
+    );
+}
+
+
+/* =========================================================
+   PRIVILEGED ADMIN CLIENT
+ *
+ * NEVER expose this client to browser code.
+ * This function runs only inside Supabase Edge Functions.
+========================================================= */
+
+export function adminClient() {
+
+    return createClient(
+        getSupabaseUrl(),
+        getServiceRoleKey(),
+        {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false
+            }
+        }
+    );
+}
+
+
+/* =========================================================
+   USER CLIENT
+ *
+ * Uses the Authorization bearer token supplied by
+ * the logged-in browser user.
 ========================================================= */
 
 export function userClient(
     req: Request
 ) {
-
-    const supabaseUrl =
-        Deno.env.get("SUPABASE_URL");
-
-    if (!supabaseUrl) {
-        throw new Error(
-            "SUPABASE_URL is missing."
-        );
-    }
 
     const authorization =
         req.headers.get(
@@ -86,18 +189,20 @@ export function userClient(
     }
 
     const token =
-        authorization.replace(
-            /^Bearer\s+/i,
-            ""
-        ).trim();
+        authorization
+            .replace(
+                /^Bearer\s+/i,
+                ""
+            )
+            .trim();
 
     if (!token) {
         return null;
     }
 
     return createClient(
-        supabaseUrl,
-        getSupabaseKey(),
+        getSupabaseUrl(),
+        getPublishableKey(),
         {
             global: {
                 headers: {
@@ -132,10 +237,12 @@ export async function userFrom(
     }
 
     const token =
-        authorization.replace(
-            /^Bearer\s+/i,
-            ""
-        ).trim();
+        authorization
+            .replace(
+                /^Bearer\s+/i,
+                ""
+            )
+            .trim();
 
     if (!token) {
         return null;
@@ -160,7 +267,7 @@ export async function userFrom(
 
             console.error(
                 "Auth error:",
-                error
+                error.message
             );
 
             return null;
@@ -178,3 +285,4 @@ export async function userFrom(
         return null;
     }
 }
+```

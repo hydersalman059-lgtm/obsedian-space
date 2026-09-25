@@ -1,23 +1,10 @@
+```ts
 export const cors = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers":
-        "authorization, apikey, content-type, x-client-info",
+        "authorization, x-client-info, apikey, content-type, x-retry-count, traceparent, tracestate, baggage",
     "Access-Control-Allow-Methods":
-        "GET, POST, PUT, DELETE, OPTIONS"
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Max-Age": "86400"
 };
-
-export function json(
-    data: any,
-    status = 200
-) {
-    return new Response(
-        JSON.stringify(data),
-        {
-            status,
-            headers: {
-                ...cors,
-                "Content-Type": "application/json"
-            }
-        }
-    );
-}
+```
