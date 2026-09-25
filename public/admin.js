@@ -1,4 +1,3 @@
-
 /* =========================================================
    OBSEDIAN.SPACE
    ADMIN PANEL
@@ -18,171 +17,320 @@ const sb = supabase.createClient(
 
 
 /* =========================================================
+   GLOBAL STATE
+========================================================= */
+
+let session = null;
+let currentSection = "dashboard";
+let currentUsers = [];
+let currentPlans = [];
+let currentBranding = null;
+
+
+/* =========================================================
    HELPERS
 ========================================================= */
 
 const $ = (id) => document.getElementById(id);
 
-let currentSection = "dashboard";
-let currentRequest = 0;
+
+function escapeHtml(value) {
+
+    if (value === null || value === undefined) {
+        return "";
+    }
+
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+function formatDate(value) {
+
+    if (!value) {
+        return "—";
+    }
+
+    try {
+
+        return new Date(value).toLocaleString(
+            "en-IN",
+            {
+                dateStyle: "medium",
+                timeStyle: "short"
+            }
+        );
+
+    } catch {
+
+        return value;
+    }
+}
+
+
+function formatDateOnly(value) {
+
+    if (!value) {
+        return "—";
+    }
+
+    try {
+
+        return new Date(value).toLocaleDateString(
+            "en-IN",
+            {
+                day: "2-digit",
+                month: "short",
+                year: "numeric"
+            }
+        );
+
+    } catch {
+
+        return value;
+    }
+}
+
+
+function showMessage(message, type = "success") {
+
+    let box = $("adminMessage");
+
+    if (!box) {
+
+        box = document.createElement("div");
+
+        box.id = "adminMessage";
+
+        box.style.position = "fixed";
+        box.style.top = "20px";
+        box.style.right = "20px";
+        box.style.zIndex = "99999";
+        box.style.maxWidth = "420px";
+        box.style.padding = "14px 18px";
+        box.style.borderRadius = "10px";
+        box.style.fontSize = "14px";
+        box.style.fontWeight = "600";
+        box.style.boxShadow =
+            "0 10px 30px rgba(0,0,0,.15)";
+
+        document.body.appendChild(box);
+    }
+
+    box.textContent = message;
+
+    box.style.background =
+        type === "error"
+            ? "#fee2e2"
+            : "#dcfce7";
+
+    box.style.color =
+        type === "error"
+            ? "#991b1b"
+            : "#166534";
+
+    box.style.border =
+        type === "error"
+            ? "1px solid #fecaca"
+            : "1px solid #bbf7d0";
+
+    clearTimeout(
+        window.__adminMessageTimer
+    );
+
+    window.__adminMessageTimer =
+        setTimeout(() => {
+
+            box.remove();
+
+        }, 4000);
+}
+
+
+function loading(message = "Loading...") {
+
+    const content = $("content");
+
+    if (!content) {
+        return;
+    }
+
+    content.innerHTML = `
+        <div class="card">
+            <p>${escapeHtml(message)}</p>
+        </div>
+    `;
+}
+
+
+function errorBox(message) {
+
+    const content = $("content");
+
+    if (!content) {
+        return;
+    }
+
+    content.innerHTML = `
+        <div class="card">
+            <h2>Error</h2>
+            <p>${escapeHtml(message)}</p>
+            <button id="retrySection">
+                Retry
+            </button>
+        </div>
+    `;
+
+    const retry = $("retrySection");
+
+    if (retry) {
+
+        retry.onclick = () => {
+
+            loadSection(
+                currentSection
+            );
+
+        };
+    }
+}
 
 
 /* =========================================================
-   AUTH SESSION
+   AUTH
 ========================================================= */
 
 async function getSession() {
 
-    try {
+    const result =
+        await sb.auth.getSession();
 
-        const {
-            data,
-            error
-        } = await sb.auth.getSession();
+    session =
+        result?.data?.session || null;
 
-        if (error) {
+    return session;
+}
 
-            console.error(
-                "Supabase session error:",
-                error
-            );
 
-            redirectToLogin();
+async function requireSession() {
 
-            return null;
-        }
+    const current =
+        await getSession();
 
-        const session =
-            data?.session || null;
+    if (!current) {
 
-        if (!session) {
-
-            redirectToLogin();
-
-            return null;
-        }
-
-        return session;
-
-    } catch (error) {
-
-        console.error(
-            "Session exception:",
-            error
-        );
-
-        redirectToLogin();
+        window.location.href =
+            "/app/";
 
         return null;
     }
+
+    return current;
 }
 
 
 /* =========================================================
-   LOGIN REDIRECT
-========================================================= */
-
-function redirectToLogin() {
-
-    try {
-
-        sessionStorage.setItem(
-            "obsedian_admin_login",
-            "1"
-        );
-
-    } catch (error) {
-        console.warn(error);
-    }
-
-    const loginUrl =
-        "/app/?redirect=/admin/";
-
-    console.log(
-        "No admin session. Redirecting to:",
-        loginUrl
-    );
-
-    window.location.replace(
-        loginUrl
-    );
-}
-
-
-/* =========================================================
-   ADMIN EDGE FUNCTION API
+   ADMIN API
 ========================================================= */
 
 async function api(
     section,
-    params = {}
+    options = {}
 ) {
 
-    const session =
-        await getSession();
+    const current =
+        await requireSession();
 
-    if (!session) {
-        return null;
+    if (!current) {
+        throw new Error(
+            "Authentication required."
+        );
     }
 
-    const supabaseUrl =
-        window.OBSEDIAN_CONFIG.SUPABASE_URL;
+    const params =
+        new URLSearchParams();
 
-    const publishableKey =
-        window.OBSEDIAN_CONFIG
-            .SUPABASE_PUBLISHABLE_KEY;
+    params.set(
+        "section",
+        section
+    );
 
-    const query =
-        new URLSearchParams({
-            section,
-            ...params
-        });
+    if (options.search !== undefined) {
 
-    const endpoint =
-        `${supabaseUrl}/functions/v1/admin?${query.toString()}`;
+        params.set(
+            "search",
+            options.search
+        );
+    }
+
+
+    const url =
+        `${window.OBSEDIAN_CONFIG.SUPABASE_URL}` +
+        `/functions/v1/admin?` +
+        params.toString();
+
 
     console.log(
         "Admin API request:",
-        endpoint
+        url
     );
 
-    let response;
 
-    try {
+    const response =
+        await fetch(
+            url,
+            {
+                method:
+                    options.method || "GET",
 
-        response =
-            await fetch(
-                endpoint,
-                {
-                    method: "GET",
+                headers: {
 
-                    headers: {
-                        "Authorization":
-                            `Bearer ${session.access_token}`,
+                    Authorization:
+                        `Bearer ${current.access_token}`,
 
-                        "apikey":
-                            publishableKey,
+                    apikey:
+                        window.OBSEDIAN_CONFIG
+                            .SUPABASE_PUBLISHABLE_KEY,
 
-                        "Content-Type":
-                            "application/json"
-                    }
-                }
-            );
+                    "Content-Type":
+                        "application/json"
+                },
 
-    } catch (error) {
-
-        console.error(
-            "Admin API network error:",
-            error
+                body:
+                    options.body
+                        ? JSON.stringify(
+                            options.body
+                        )
+                        : undefined
+            }
         );
 
-        throw new Error(
-            "Unable to connect to the Admin server."
-        );
-    }
 
     const raw =
         await response.text();
+
+
+    let data = {};
+
+    try {
+
+        data =
+            raw
+                ? JSON.parse(raw)
+                : {};
+
+    } catch {
+
+        data = {
+            error: raw ||
+                "Invalid server response."
+        };
+    }
+
 
     console.log(
         "Admin API status:",
@@ -191,2908 +339,134 @@ async function api(
 
     console.log(
         "Admin API response:",
-        raw
+        data
     );
 
-    let data = null;
-
-    try {
-
-        data =
-            raw
-                ? JSON.parse(raw)
-                : null;
-
-    } catch (error) {
-
-        console.error(
-            "Admin API returned non-JSON:",
-            raw
-        );
-
-        throw new Error(
-            `Admin server returned an invalid response (HTTP ${response.status}).`
-        );
-    }
 
     if (!response.ok) {
 
-        const message =
+        throw new Error(
             data?.error ||
             data?.message ||
-            `Admin request failed with HTTP ${response.status}.`;
-
-        throw new Error(
-            message
+            `Request failed (${response.status})`
         );
     }
 
-    if (
-        data &&
-        data.error
-    ) {
-
-        throw new Error(
-            data.error
-        );
-    }
 
     return data;
 }
 
 
 /* =========================================================
-   GENERIC LOADING
+   GENERIC ADMIN ACTION
 ========================================================= */
 
-function showLoading(
-    title = "Loading..."
+async function adminAction(
+    action,
+    payload = {}
 ) {
 
-    $("content").innerHTML = `
-        <div class="card">
-            <h2>${escapeHtml(title)}</h2>
+    const current =
+        await requireSession();
 
-            <p>
-                Please wait while the requested
-                admin data is being loaded.
-            </p>
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   GENERIC ERROR
-========================================================= */
-
-function showError(
-    error,
-    section
-) {
-
-    const message =
-        error?.message ||
-        "Unable to load this section.";
-
-    $("content").innerHTML = `
-        <div class="card">
-
-            <h2>
-                Error
-            </h2>
-
-            <p>
-                ${escapeHtml(message)}
-            </p>
-
-            <button
-                type="button"
-                id="retrySection"
-            >
-                Retry
-            </button>
-
-        </div>
-    `;
-
-    const retry =
-        $("retrySection");
-
-    if (retry) {
-
-        retry.addEventListener(
-            "click",
-            () => loadSection(section)
-        );
+    if (!current) {
+        return null;
     }
-}
 
 
-/* =========================================================
-   DASHBOARD
-========================================================= */
+    const url =
+        `${window.OBSEDIAN_CONFIG.SUPABASE_URL}` +
+        `/functions/v1/admin`;
 
-async function loadDashboard() {
 
-    $("pageTitle").textContent =
-        "Admin Dashboard";
-
-    showLoading(
-        "Loading dashboard..."
+    console.log(
+        "Admin action:",
+        action,
+        payload
     );
 
-    const data =
-        await api(
-            "dashboard"
-        );
 
-    const metrics =
-        data?.metrics || {};
-
-    const metricEntries =
-        Object.entries(metrics);
-
-    $("content").innerHTML = `
-
-        <div class="stats">
-
-            ${
-                metricEntries.length
-                    ? metricEntries
-                        .map(
-                            ([key, value]) => `
-                                <div class="stat">
-
-                                    <small>
-                                        ${escapeHtml(
-                                            formatLabel(key)
-                                        )}
-                                    </small>
-
-                                    <br>
-
-                                    <b>
-                                        ${escapeHtml(
-                                            String(
-                                                value ?? 0
-                                            )
-                                        )}
-                                    </b>
-
-                                </div>
-                            `
-                        )
-                        .join("")
-                    :
-                        `
-                            <div class="card">
-                                <p>
-                                    No dashboard metrics available.
-                                </p>
-                            </div>
-                        `
-            }
-
-        </div>
-
-
-        <div class="card">
-
-            <h2>
-                Recent Audit Logs
-            </h2>
-
-            <pre id="logs">${escapeHtml(
-                JSON.stringify(
-                    data?.logs || [],
-                    null,
-                    2
-                )
-            )}</pre>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   USERS
-========================================================= */
-
-async function loadUsers() {
-
-    $("pageTitle").textContent =
-        "Users";
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <input
-                id="userSearch"
-                class="search-box"
-                placeholder="Search name, email, phone, plan..."
-                autocomplete="off"
-            >
-
-        </div>
-
-        <div class="card">
-
-            <div id="usersTable">
-                Loading users...
-            </div>
-
-        </div>
-    `;
-
-    const searchInput =
-        $("userSearch");
-
-    let timer;
-
-    if (searchInput) {
-
-        searchInput.addEventListener(
-            "input",
-            () => {
-
-                clearTimeout(timer);
-
-                timer =
-                    setTimeout(
-                        () => refreshUsers(),
-                        300
-                    );
-            }
-        );
-    }
-
-    await refreshUsers();
-}
-
-
-/* =========================================================
-   REFRESH USERS
-========================================================= */
-
-async function refreshUsers() {
-
-    const search =
-        $("userSearch")?.value || "";
-
-    const data =
-        await api(
-            "users",
+    const response =
+        await fetch(
+            url,
             {
-                search
+                method: "POST",
+
+                headers: {
+
+                    Authorization:
+                        `Bearer ${current.access_token}`,
+
+                    apikey:
+                        window.OBSEDIAN_CONFIG
+                            .SUPABASE_PUBLISHABLE_KEY,
+
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        action,
+                        ...payload
+                    })
             }
         );
 
-    renderUsers(
-        data?.users || []
-    );
-}
 
+    const raw =
+        await response.text();
 
-/* =========================================================
-   RENDER USERS
-========================================================= */
 
-function renderUsers(
-    users
-) {
-
-    if (!users.length) {
-
-        $("usersTable").innerHTML = `
-            <div class="empty">
-                No users found.
-            </div>
-        `;
-
-        return;
-    }
-
-    $("usersTable").innerHTML = `
-
-        <div class="admin-table-wrapper">
-
-            <table class="admin-table">
-
-                <thead>
-
-                    <tr>
-                        <th>User</th>
-                        <th>Role</th>
-                        <th>Plan</th>
-                        <th>Status</th>
-                        <th>Websites</th>
-                        <th>AI Runs</th>
-                        <th>Expiry</th>
-                        <th>Registered</th>
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    ${users
-                        .map(
-                            user => `
-
-                                <tr>
-
-                                    <td>
-
-                                        <strong>
-                                            ${escapeHtml(
-                                                user.full_name ||
-                                                "Unnamed User"
-                                            )}
-                                        </strong>
-
-                                        <br>
-
-                                        <small>
-                                            ${escapeHtml(
-                                                user.email ||
-                                                "No email"
-                                            )}
-                                        </small>
-
-                                        ${
-                                            user.phone
-                                                ? `
-                                                    <br>
-                                                    <small>
-                                                        ${escapeHtml(
-                                                            user.phone
-                                                        )}
-                                                    </small>
-                                                `
-                                                : ""
-                                        }
-
-                                    </td>
-
-
-                                    <td>
-                                        <span class="badge">
-                                            ${escapeHtml(
-                                                user.role ||
-                                                "user"
-                                            )}
-                                        </span>
-                                    </td>
-
-
-                                    <td>
-                                        ${escapeHtml(
-                                            user.plan_id ||
-                                            "free"
-                                        )}
-                                    </td>
-
-
-                                    <td>
-                                        <span class="badge">
-                                            ${escapeHtml(
-                                                user.subscription_status ||
-                                                "none"
-                                            )}
-                                        </span>
-                                    </td>
-
-
-                                    <td>
-                                        ${escapeHtml(
-                                            String(
-                                                user.websites ??
-                                                0
-                                            )
-                                        )}
-                                    </td>
-
-
-                                    <td>
-                                        ${escapeHtml(
-                                            String(
-                                                user.ai_runs ??
-                                                0
-                                            )
-                                        )}
-                                    </td>
-
-
-                                    <td>
-                                        ${formatDate(
-                                            user.subscription_ends_at
-                                        )}
-                                    </td>
-
-
-                                    <td>
-                                        ${formatDate(
-                                            user.created_at
-                                        )}
-                                    </td>
-
-                                </tr>
-
-                            `
-                        )
-                        .join("")}
-
-                </tbody>
-
-            </table>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   WEBSITES
-========================================================= */
-
-async function loadWebsites() {
-
-    $("pageTitle").textContent =
-        "Websites";
-
-    showLoading(
-        "Loading websites..."
-    );
-
-    const data =
-        await api(
-            "websites"
-        );
-
-    const websites =
-        data?.websites ||
-        data?.data ||
-        [];
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <div style="
-                display:flex;
-                justify-content:space-between;
-                align-items:center;
-                gap:12px;
-                flex-wrap:wrap;
-            ">
-
-                <div>
-
-                    <h2>
-                        Websites
-                    </h2>
-
-                    <p>
-                        ${websites.length}
-                        website(s) registered.
-                    </p>
-
-                </div>
-
-                <button
-                    type="button"
-                    id="refreshWebsites"
-                >
-                    Refresh
-                </button>
-
-            </div>
-
-        </div>
-
-
-        <div class="card">
-
-            <div id="websitesTable">
-
-                ${renderWebsitesHtml(websites)}
-
-            </div>
-
-        </div>
-    `;
-
-    $("refreshWebsites")?.addEventListener(
-        "click",
-        () => loadWebsites()
-    );
-}
-
-
-/* =========================================================
-   RENDER WEBSITES
-========================================================= */
-
-function renderWebsitesHtml(
-    websites
-) {
-
-    if (!websites.length) {
-
-        return `
-            <div class="empty">
-                No websites found.
-            </div>
-        `;
-    }
-
-    return `
-
-        <div class="admin-table-wrapper">
-
-            <table class="admin-table">
-
-                <thead>
-
-                    <tr>
-                        <th>Website</th>
-                        <th>User</th>
-                        <th>Status</th>
-                        <th>Frequency</th>
-                        <th>Last Crawled</th>
-                        <th>Next Crawl</th>
-                        <th>Created</th>
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    ${websites
-                        .map(
-                            website => `
-
-                                <tr>
-
-                                    <td>
-
-                                        <strong>
-                                            ${escapeHtml(
-                                                website.name ||
-                                                website.normalized_url ||
-                                                website.url ||
-                                                "Unnamed"
-                                            )}
-                                        </strong>
-
-                                        ${
-                                            website.url
-                                                ? `
-                                                    <br>
-                                                    <small>
-                                                        ${escapeHtml(
-                                                            website.url
-                                                        )}
-                                                    </small>
-                                                `
-                                                : ""
-                                        }
-
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            website.user_email ||
-                                            website.user_id ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        <span class="badge">
-                                            ${escapeHtml(
-                                                website.status ||
-                                                "unknown"
-                                            )}
-                                        </span>
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            website.crawl_frequency ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${formatDateTime(
-                                            website.last_crawled_at
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${formatDateTime(
-                                            website.next_crawl_at
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${formatDate(
-                                            website.created_at
-                                        )}
-                                    </td>
-
-                                </tr>
-                            `
-                        )
-                        .join("")}
-
-                </tbody>
-
-            </table>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   SUBSCRIPTIONS
-========================================================= */
-
-async function loadSubscriptions() {
-
-    $("pageTitle").textContent =
-        "Subscriptions";
-
-    showLoading(
-        "Loading subscriptions..."
-    );
-
-    const data =
-        await api(
-            "subscriptions"
-        );
-
-    const subscriptions =
-        data?.subscriptions ||
-        data?.data ||
-        [];
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <h2>
-                Subscriptions
-            </h2>
-
-            <p>
-                ${subscriptions.length}
-                subscription record(s).
-            </p>
-
-        </div>
-
-        <div class="card">
-
-            <div id="subscriptionsTable">
-
-                ${renderSubscriptionsHtml(
-                    subscriptions
-                )}
-
-            </div>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   RENDER SUBSCRIPTIONS
-========================================================= */
-
-function renderSubscriptionsHtml(
-    subscriptions
-) {
-
-    if (!subscriptions.length) {
-
-        return `
-            <div class="empty">
-                No subscriptions found.
-            </div>
-        `;
-    }
-
-    return `
-
-        <div class="admin-table-wrapper">
-
-            <table class="admin-table">
-
-                <thead>
-
-                    <tr>
-                        <th>User</th>
-                        <th>Plan</th>
-                        <th>Billing</th>
-                        <th>Status</th>
-                        <th>Provider</th>
-                        <th>Started</th>
-                        <th>Ends</th>
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    ${subscriptions
-                        .map(
-                            subscription => `
-
-                                <tr>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            subscription.user_email ||
-                                            subscription.user_id ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            subscription.plan_id ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            subscription.billing_cycle ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        <span class="badge">
-                                            ${escapeHtml(
-                                                subscription.status ||
-                                                "—"
-                                            )}
-                                        </span>
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            subscription.provider ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${formatDate(
-                                            subscription.started_at
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${formatDate(
-                                            subscription.subscription_ends_at
-                                        )}
-                                    </td>
-
-                                </tr>
-                            `
-                        )
-                        .join("")}
-
-                </tbody>
-
-            </table>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   PAYMENTS
-========================================================= */
-
-async function loadPayments() {
-
-    $("pageTitle").textContent =
-        "Payments";
-
-    showLoading(
-        "Loading payments..."
-    );
-
-    const data =
-        await api(
-            "payments"
-        );
-
-    const payments =
-        data?.payments ||
-        data?.data ||
-        [];
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <h2>
-                Payments
-            </h2>
-
-            <p>
-                ${payments.length}
-                payment record(s).
-            </p>
-
-        </div>
-
-        <div class="card">
-
-            <div id="paymentsTable">
-
-                ${renderPaymentsHtml(
-                    payments
-                )}
-
-            </div>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   RENDER PAYMENTS
-========================================================= */
-
-function renderPaymentsHtml(
-    payments
-) {
-
-    if (!payments.length) {
-
-        return `
-            <div class="empty">
-                No payment records found.
-            </div>
-        `;
-    }
-
-    return `
-
-        <div class="admin-table-wrapper">
-
-            <table class="admin-table">
-
-                <thead>
-
-                    <tr>
-                        <th>User</th>
-                        <th>Order ID</th>
-                        <th>Payment ID</th>
-                        <th>Amount</th>
-                        <th>Currency</th>
-                        <th>Status</th>
-                        <th>Last Payment</th>
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    ${payments
-                        .map(
-                            payment => `
-
-                                <tr>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            payment.user_email ||
-                                            payment.user_id ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            payment.razorpay_order_id ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            payment.razorpay_payment_id ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            payment.payment_amount ??
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            payment.currency ||
-                                            "INR"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        <span class="badge">
-                                            ${escapeHtml(
-                                                payment.status ||
-                                                "—"
-                                            )}
-                                        </span>
-                                    </td>
-
-                                    <td>
-                                        ${formatDateTime(
-                                            payment.last_payment_at
-                                        )}
-                                    </td>
-
-                                </tr>
-                            `
-                        )
-                        .join("")}
-
-                </tbody>
-
-            </table>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   AI OPERATIONS
-========================================================= */
-
-async function loadAI() {
-
-    $("pageTitle").textContent =
-        "AI Operations";
-
-    showLoading(
-        "Loading AI operations..."
-    );
-
-    const data =
-        await api(
-            "ai"
-        );
-
-    const runs =
-        data?.ai_runs ||
-        data?.runs ||
-        data?.data ||
-        [];
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <h2>
-                AI Operations
-            </h2>
-
-            <p>
-                ${runs.length}
-                AI run(s).
-            </p>
-
-        </div>
-
-        <div class="card">
-
-            <div id="aiTable">
-
-                ${renderAIHtml(runs)}
-
-            </div>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   RENDER AI
-========================================================= */
-
-function renderAIHtml(
-    runs
-) {
-
-    if (!runs.length) {
-
-        return `
-            <div class="empty">
-                No AI runs found.
-            </div>
-        `;
-    }
-
-    return `
-
-        <div class="admin-table-wrapper">
-
-            <table class="admin-table">
-
-                <thead>
-
-                    <tr>
-                        <th>Agent</th>
-                        <th>Provider</th>
-                        <th>Model</th>
-                        <th>Status</th>
-                        <th>Input Tokens</th>
-                        <th>Output Tokens</th>
-                        <th>Cost</th>
-                        <th>Latency</th>
-                        <th>Created</th>
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    ${runs
-                        .map(
-                            run => `
-
-                                <tr>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            run.agent ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            run.provider ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            run.model ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        <span class="badge">
-                                            ${escapeHtml(
-                                                run.status ||
-                                                "—"
-                                            )}
-                                        </span>
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            String(
-                                                run.input_tokens ??
-                                                0
-                                            )
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            String(
-                                                run.output_tokens ??
-                                                0
-                                            )
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            String(
-                                                run.estimated_cost ??
-                                                0
-                                            )
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            String(
-                                                run.latency_ms ??
-                                                0
-                                            )
-                                        )} ms
-                                    </td>
-
-                                    <td>
-                                        ${formatDateTime(
-                                            run.created_at
-                                        )}
-                                    </td>
-
-                                </tr>
-                            `
-                        )
-                        .join("")}
-
-                </tbody>
-
-            </table>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   APPROVALS
-========================================================= */
-
-async function loadApprovals() {
-
-    $("pageTitle").textContent =
-        "Approvals";
-
-    showLoading(
-        "Loading approvals..."
-    );
-
-    const data =
-        await api(
-            "approvals"
-        );
-
-    const approvals =
-        data?.approvals ||
-        data?.data ||
-        [];
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <h2>
-                Approvals
-            </h2>
-
-            <p>
-                ${approvals.length}
-                approval record(s).
-            </p>
-
-        </div>
-
-        <div class="card">
-
-            ${renderApprovalsHtml(
-                approvals
-            )}
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   RENDER APPROVALS
-========================================================= */
-
-function renderApprovalsHtml(
-    approvals
-) {
-
-    if (!approvals.length) {
-
-        return `
-            <div class="empty">
-                No approval records found.
-            </div>
-        `;
-    }
-
-    return `
-
-        <div class="admin-table-wrapper">
-
-            <table class="admin-table">
-
-                <thead>
-
-                    <tr>
-                        <th>Type</th>
-                        <th>User</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Updated</th>
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    ${approvals
-                        .map(
-                            item => `
-
-                                <tr>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            item.type ||
-                                            item.kind ||
-                                            item.action ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            item.user_email ||
-                                            item.user_id ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        <span class="badge">
-                                            ${escapeHtml(
-                                                item.status ||
-                                                "—"
-                                            )}
-                                        </span>
-                                    </td>
-
-                                    <td>
-                                        ${formatDateTime(
-                                            item.created_at
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${formatDateTime(
-                                            item.updated_at
-                                        )}
-                                    </td>
-
-                                </tr>
-                            `
-                        )
-                        .join("")}
-
-                </tbody>
-
-            </table>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   SUPPORT
-========================================================= */
-
-async function loadSupport() {
-
-    $("pageTitle").textContent =
-        "Support";
-
-    showLoading(
-        "Loading support tickets..."
-    );
-
-    const data =
-        await api(
-            "support"
-        );
-
-    const tickets =
-        data?.support_tickets ||
-        data?.tickets ||
-        data?.data ||
-        [];
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <h2>
-                Support Tickets
-            </h2>
-
-            <p>
-                ${tickets.length}
-                ticket(s).
-            </p>
-
-        </div>
-
-        <div class="card">
-
-            ${renderSupportHtml(
-                tickets
-            )}
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   RENDER SUPPORT
-========================================================= */
-
-function renderSupportHtml(
-    tickets
-) {
-
-    if (!tickets.length) {
-
-        return `
-            <div class="empty">
-                No support tickets found.
-            </div>
-        `;
-    }
-
-    return `
-
-        <div class="admin-table-wrapper">
-
-            <table class="admin-table">
-
-                <thead>
-
-                    <tr>
-                        <th>Subject</th>
-                        <th>User</th>
-                        <th>Status</th>
-                        <th>Priority</th>
-                        <th>Created</th>
-                        <th>Updated</th>
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    ${tickets
-                        .map(
-                            ticket => `
-
-                                <tr>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            ticket.subject ||
-                                            ticket.title ||
-                                            "No subject"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            ticket.user_email ||
-                                            ticket.user_id ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        <span class="badge">
-                                            ${escapeHtml(
-                                                ticket.status ||
-                                                "—"
-                                            )}
-                                        </span>
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            ticket.priority ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${formatDateTime(
-                                            ticket.created_at
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${formatDateTime(
-                                            ticket.updated_at
-                                        )}
-                                    </td>
-
-                                </tr>
-                            `
-                        )
-                        .join("")}
-
-                </tbody>
-
-            </table>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   AUDIT LOGS
-========================================================= */
-
-async function loadAudit() {
-
-    $("pageTitle").textContent =
-        "Audit Logs";
-
-    showLoading(
-        "Loading audit logs..."
-    );
-
-    const data =
-        await api(
-            "audit"
-        );
-
-    const logs =
-        data?.logs ||
-        data?.audit_logs ||
-        data?.data ||
-        [];
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <h2>
-                Audit Logs
-            </h2>
-
-            <p>
-                Showing ${logs.length}
-                record(s).
-            </p>
-
-        </div>
-
-        <div class="card">
-
-            ${renderAuditHtml(logs)}
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   RENDER AUDIT
-========================================================= */
-
-function renderAuditHtml(
-    logs
-) {
-
-    if (!logs.length) {
-
-        return `
-            <div class="empty">
-                No audit logs found.
-            </div>
-        `;
-    }
-
-    return `
-
-        <div class="admin-table-wrapper">
-
-            <table class="admin-table">
-
-                <thead>
-
-                    <tr>
-                        <th>Event</th>
-                        <th>Kind</th>
-                        <th>User</th>
-                        <th>Entity</th>
-                        <th>Created</th>
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    ${logs
-                        .map(
-                            log => `
-
-                                <tr>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            log.event ||
-                                            log.action ||
-                                            log.name ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            log.kind ||
-                                            log.type ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            log.user_email ||
-                                            log.user_id ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${escapeHtml(
-                                            log.entity_id ||
-                                            log.entity ||
-                                            "—"
-                                        )}
-                                    </td>
-
-                                    <td>
-                                        ${formatDateTime(
-                                            log.created_at
-                                        )}
-                                    </td>
-
-                                </tr>
-                            `
-                        )
-                        .join("")}
-
-                </tbody>
-
-            </table>
-
-        </div>
-    `;
-}
-
-
-/* =========================================================
-   SETTINGS / BRANDING
-========================================================= */
-
-let currentBrandingSettings = {
-    brand_name: "Obsedian.Space",
-    logo_url: "",
-    primary_color: "#7c3aed",
-    accent_color: "#f59e0b",
-    support_email: ""
-};
-
-
-/* =========================================================
-   LOAD SETTINGS
-========================================================= */
-
-async function loadSettings() {
-
-    $("pageTitle").textContent =
-        "Settings";
-
-    showLoading(
-        "Loading branding settings..."
-    );
-
-    const data =
-        await api(
-            "settings"
-        );
-
-    const settings =
-        data?.settings ||
-        data?.data ||
-        [];
-
-    let branding = null;
-
-    if (Array.isArray(settings)) {
-
-        const brandingRecord =
-            settings.find(
-                item =>
-                    item &&
-                    item.key ===
-                        "branding"
-            );
-
-        branding =
-            brandingRecord?.value ||
-            null;
-
-    } else if (
-        settings &&
-        typeof settings === "object"
-    ) {
-
-        branding =
-            settings.branding ||
-            settings;
-
-    }
-
-    if (
-        !branding ||
-        typeof branding !== "object"
-    ) {
-        branding = {};
-    }
-
-
-    currentBrandingSettings = {
-
-        brand_name:
-            branding.brand_name ||
-            "Obsedian.Space",
-
-        logo_url:
-            branding.logo_url ||
-            "",
-
-        primary_color:
-            branding.primary_color ||
-            "#7c3aed",
-
-        accent_color:
-            branding.accent_color ||
-            "#f59e0b",
-
-        support_email:
-            branding.support_email ||
-            ""
-    };
-
-
-    renderBrandingSettings(
-        currentBrandingSettings
-    );
-}
-
-
-/* =========================================================
-   RENDER BRANDING SETTINGS
-========================================================= */
-
-function renderBrandingSettings(
-    branding
-) {
-
-    const logoUrl =
-        branding.logo_url ||
-        "";
-
-    const primaryColor =
-        /^#[0-9a-f]{6}$/i.test(
-            branding.primary_color
-        )
-            ? branding.primary_color
-            : "#7c3aed";
-
-    const accentColor =
-        /^#[0-9a-f]{6}$/i.test(
-            branding.accent_color
-        )
-            ? branding.accent_color
-            : "#f59e0b";
-
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <h2>
-                Branding Settings
-            </h2>
-
-            <p>
-                Manage your Obsedian.Space
-                brand name, logo, colors and
-                support email.
-            </p>
-
-        </div>
-
-
-        <div class="card">
-
-            <form
-                id="brandingForm"
-                autocomplete="off"
-            >
-
-                <!-- BRAND NAME -->
-
-                <div
-                    style="
-                        margin-bottom:20px;
-                    "
-                >
-
-                    <label
-                        for="brandName"
-                        style="
-                            display:block;
-                            font-weight:600;
-                            margin-bottom:7px;
-                        "
-                    >
-                        Brand Name
-                    </label>
-
-                    <input
-                        id="brandName"
-                        type="text"
-                        value="${escapeHtml(
-                            branding.brand_name
-                        )}"
-                        placeholder="Obsedian.Space"
-                        maxlength="100"
-                        style="
-                            width:100%;
-                            max-width:650px;
-                            padding:12px;
-                            border:1px solid #d1d5db;
-                            border-radius:8px;
-                            box-sizing:border-box;
-                        "
-                    >
-
-                </div>
-
-
-                <!-- LOGO -->
-
-                <div
-                    style="
-                        margin-bottom:20px;
-                    "
-                >
-
-                    <label
-                        style="
-                            display:block;
-                            font-weight:600;
-                            margin-bottom:10px;
-                        "
-                    >
-                        Logo
-                    </label>
-
-
-                    <div
-                        id="logoPreviewBox"
-                        style="
-                            width:220px;
-                            min-height:120px;
-                            border:1px dashed #d1d5db;
-                            border-radius:10px;
-                            display:flex;
-                            align-items:center;
-                            justify-content:center;
-                            padding:15px;
-                            background:#f9fafb;
-                            margin-bottom:12px;
-                            box-sizing:border-box;
-                        "
-                    >
-
-                        ${
-                            logoUrl
-                                ? `
-                                    <img
-                                        id="logoPreview"
-                                        src="${escapeHtml(
-                                            logoUrl
-                                        )}"
-                                        alt="Logo preview"
-                                        style="
-                                            max-width:190px;
-                                            max-height:90px;
-                                            object-fit:contain;
-                                        "
-                                        onerror="
-                                            this.style.display='none';
-                                            document.getElementById('logoPreviewEmpty').style.display='block';
-                                        "
-                                    >
-
-                                    <span
-                                        id="logoPreviewEmpty"
-                                        style="
-                                            display:none;
-                                            color:#6b7280;
-                                        "
-                                    >
-                                        Logo preview unavailable
-                                    </span>
-                                `
-                                : `
-                                    <span
-                                        style="
-                                            color:#6b7280;
-                                        "
-                                    >
-                                        No logo selected
-                                    </span>
-                                `
-                        }
-
-                    </div>
-
-
-                    <div
-                        style="
-                            display:flex;
-                            gap:10px;
-                            flex-wrap:wrap;
-                        "
-                    >
-
-                        <label
-                            for="logoFile"
-                            style="
-                                display:inline-flex;
-                                align-items:center;
-                                justify-content:center;
-                                padding:10px 16px;
-                                border-radius:8px;
-                                background:#7c3aed;
-                                color:#fff;
-                                cursor:pointer;
-                                font-weight:600;
-                            "
-                        >
-                            Select Logo
-                        </label>
-
-                        <input
-                            id="logoFile"
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                            style="display:none"
-                        >
-
-                        <button
-                            type="button"
-                            id="removeLogo"
-                        >
-                            Remove Logo
-                        </button>
-
-                    </div>
-
-
-                    <small
-                        style="
-                            display:block;
-                            margin-top:8px;
-                            color:#6b7280;
-                        "
-                    >
-                        PNG, JPG, WEBP or SVG.
-                        Maximum 3 MB.
-                    </small>
-
-                </div>
-
-
-                <!-- LOGO URL -->
-
-                <div
-                    style="
-                        margin-bottom:20px;
-                    "
-                >
-
-                    <label
-                        for="logoUrl"
-                        style="
-                            display:block;
-                            font-weight:600;
-                            margin-bottom:7px;
-                        "
-                    >
-                        Logo URL
-                    </label>
-
-                    <input
-                        id="logoUrl"
-                        type="url"
-                        value="${escapeHtml(
-                            logoUrl
-                        )}"
-                        placeholder="https://..."
-                        style="
-                            width:100%;
-                            max-width:650px;
-                            padding:12px;
-                            border:1px solid #d1d5db;
-                            border-radius:8px;
-                            box-sizing:border-box;
-                        "
-                    >
-
-                    <small
-                        style="
-                            display:block;
-                            margin-top:6px;
-                            color:#6b7280;
-                        "
-                    >
-                        You can also enter an existing
-                        public logo URL manually.
-                    </small>
-
-                </div>
-
-
-                <!-- PRIMARY COLOR -->
-
-                <div
-                    style="
-                        margin-bottom:20px;
-                    "
-                >
-
-                    <label
-                        style="
-                            display:block;
-                            font-weight:600;
-                            margin-bottom:7px;
-                        "
-                    >
-                        Primary Color
-                    </label>
-
-
-                    <div
-                        style="
-                            display:flex;
-                            align-items:center;
-                            gap:10px;
-                            flex-wrap:wrap;
-                        "
-                    >
-
-                        <input
-                            id="primaryColorPicker"
-                            type="color"
-                            value="${primaryColor}"
-                            style="
-                                width:55px;
-                                height:42px;
-                                padding:2px;
-                                cursor:pointer;
-                            "
-                        >
-
-                        <input
-                            id="primaryColor"
-                            type="text"
-                            value="${escapeHtml(
-                                primaryColor
-                            )}"
-                            maxlength="7"
-                            placeholder="#7c3aed"
-                            style="
-                                width:140px;
-                                padding:10px;
-                                border:1px solid #d1d5db;
-                                border-radius:8px;
-                            "
-                        >
-
-                    </div>
-
-                </div>
-
-
-                <!-- ACCENT COLOR -->
-
-                <div
-                    style="
-                        margin-bottom:20px;
-                    "
-                >
-
-                    <label
-                        style="
-                            display:block;
-                            font-weight:600;
-                            margin-bottom:7px;
-                        "
-                    >
-                        Accent Color
-                    </label>
-
-
-                    <div
-                        style="
-                            display:flex;
-                            align-items:center;
-                            gap:10px;
-                            flex-wrap:wrap;
-                        "
-                    >
-
-                        <input
-                            id="accentColorPicker"
-                            type="color"
-                            value="${accentColor}"
-                            style="
-                                width:55px;
-                                height:42px;
-                                padding:2px;
-                                cursor:pointer;
-                            "
-                        >
-
-                        <input
-                            id="accentColor"
-                            type="text"
-                            value="${escapeHtml(
-                                accentColor
-                            )}"
-                            maxlength="7"
-                            placeholder="#f59e0b"
-                            style="
-                                width:140px;
-                                padding:10px;
-                                border:1px solid #d1d5db;
-                                border-radius:8px;
-                            "
-                        >
-
-                    </div>
-
-                </div>
-
-
-                <!-- SUPPORT EMAIL -->
-
-                <div
-                    style="
-                        margin-bottom:24px;
-                    "
-                >
-
-                    <label
-                        for="supportEmail"
-                        style="
-                            display:block;
-                            font-weight:600;
-                            margin-bottom:7px;
-                        "
-                    >
-                        Support Email
-                    </label>
-
-                    <input
-                        id="supportEmail"
-                        type="email"
-                        value="${escapeHtml(
-                            branding.support_email
-                        )}"
-                        placeholder="support@example.com"
-                        style="
-                            width:100%;
-                            max-width:650px;
-                            padding:12px;
-                            border:1px solid #d1d5db;
-                            border-radius:8px;
-                            box-sizing:border-box;
-                        "
-                    >
-
-                </div>
-
-
-                <!-- ACTIONS -->
-
-                <div
-                    style="
-                        display:flex;
-                        gap:10px;
-                        flex-wrap:wrap;
-                        align-items:center;
-                    "
-                >
-
-                    <button
-                        type="submit"
-                        id="saveBranding"
-                    >
-                        Save Branding Settings
-                    </button>
-
-                    <button
-                        type="button"
-                        id="reloadBranding"
-                    >
-                        Reload
-                    </button>
-
-                    <span
-                        id="brandingMessage"
-                        style="
-                            display:none;
-                            font-weight:600;
-                        "
-                    ></span>
-
-                </div>
-
-            </form>
-
-        </div>
-
-    `;
-
-
-    bindBrandingEvents();
-}
-
-
-/* =========================================================
-   BRANDING EVENTS
-========================================================= */
-
-function bindBrandingEvents() {
-
-    const form =
-        $("brandingForm");
-
-    const logoFile =
-        $("logoFile");
-
-    const logoUrl =
-        $("logoUrl");
-
-    const removeLogo =
-        $("removeLogo");
-
-    const reloadBranding =
-        $("reloadBranding");
-
-    const primaryPicker =
-        $("primaryColorPicker");
-
-    const primaryInput =
-        $("primaryColor");
-
-    const accentPicker =
-        $("accentColorPicker");
-
-    const accentInput =
-        $("accentColor");
-
-
-    /* -----------------------------------------
-       LOGO FILE PREVIEW
-    ----------------------------------------- */
-
-    logoFile?.addEventListener(
-        "change",
-        () => {
-
-            const file =
-                logoFile.files?.[0];
-
-            if (!file) {
-                return;
-            }
-
-
-            if (
-                ![
-                    "image/png",
-                    "image/jpeg",
-                    "image/webp",
-                    "image/svg+xml"
-                ].includes(
-                    file.type
-                )
-            ) {
-
-                alert(
-                    "Please select PNG, JPG, WEBP or SVG."
-                );
-
-                logoFile.value = "";
-
-                return;
-            }
-
-
-            if (
-                file.size >
-                3 * 1024 * 1024
-            ) {
-
-                alert(
-                    "Logo must be smaller than 3 MB."
-                );
-
-                logoFile.value = "";
-
-                return;
-            }
-
-
-            const reader =
-                new FileReader();
-
-
-            reader.onload =
-                event => {
-
-                    const box =
-                        $("logoPreviewBox");
-
-                    if (!box) {
-                        return;
-                    }
-
-                    box.innerHTML = `
-
-                        <img
-                            id="logoPreview"
-                            src="${event.target.result}"
-                            alt="Logo preview"
-                            style="
-                                max-width:190px;
-                                max-height:90px;
-                                object-fit:contain;
-                            "
-                        >
-
-                    `;
-
-                };
-
-
-            reader.readAsDataURL(
-                file
-            );
-
-        }
-    );
-
-
-    /* -----------------------------------------
-       REMOVE LOGO
-    ----------------------------------------- */
-
-    removeLogo?.addEventListener(
-        "click",
-        () => {
-
-            if (logoFile) {
-                logoFile.value = "";
-            }
-
-            if (logoUrl) {
-                logoUrl.value = "";
-            }
-
-
-            const box =
-                $("logoPreviewBox");
-
-            if (box) {
-
-                box.innerHTML = `
-
-                    <span
-                        style="
-                            color:#6b7280;
-                        "
-                    >
-                        No logo selected
-                    </span>
-
-                `;
-            }
-
-        }
-    );
-
-
-    /* -----------------------------------------
-       PRIMARY COLOR SYNC
-    ----------------------------------------- */
-
-    primaryPicker?.addEventListener(
-        "input",
-        () => {
-
-            if (primaryInput) {
-
-                primaryInput.value =
-                    primaryPicker.value;
-
-            }
-
-        }
-    );
-
-
-    primaryInput?.addEventListener(
-        "input",
-        () => {
-
-            const value =
-                primaryInput.value.trim();
-
-
-            if (
-                /^#[0-9a-fA-F]{6}$/
-                    .test(value)
-            ) {
-
-                if (primaryPicker) {
-
-                    primaryPicker.value =
-                        value;
-
-                }
-
-            }
-
-        }
-    );
-
-
-    /* -----------------------------------------
-       ACCENT COLOR SYNC
-    ----------------------------------------- */
-
-    accentPicker?.addEventListener(
-        "input",
-        () => {
-
-            if (accentInput) {
-
-                accentInput.value =
-                    accentPicker.value;
-
-            }
-
-        }
-    );
-
-
-    accentInput?.addEventListener(
-        "input",
-        () => {
-
-            const value =
-                accentInput.value.trim();
-
-
-            if (
-                /^#[0-9a-fA-F]{6}$/
-                    .test(value)
-            ) {
-
-                if (accentPicker) {
-
-                    accentPicker.value =
-                        value;
-
-                }
-
-            }
-
-        }
-    );
-
-
-    /* -----------------------------------------
-       RELOAD
-    ----------------------------------------- */
-
-    reloadBranding?.addEventListener(
-        "click",
-        () => loadSettings()
-    );
-
-
-    /* -----------------------------------------
-       SAVE
-    ----------------------------------------- */
-
-    form?.addEventListener(
-        "submit",
-        async event => {
-
-            event.preventDefault();
-
-            await saveBrandingSettings();
-
-        }
-    );
-
-}
-
-
-/* =========================================================
-   SAVE BRANDING
-========================================================= */
-
-async function saveBrandingSettings() {
-
-    const saveButton =
-        $("saveBranding");
-
-    const message =
-        $("brandingMessage");
-
-
-    const brandName =
-        $("brandName")?.value.trim() ||
-        "";
-
-    const logoUrl =
-        $("logoUrl")?.value.trim() ||
-        "";
-
-    const primaryColor =
-        $("primaryColor")?.value.trim() ||
-        "";
-
-    const accentColor =
-        $("accentColor")?.value.trim() ||
-        "";
-
-    const supportEmail =
-        $("supportEmail")?.value.trim() ||
-        "";
-
-    const logoFile =
-        $("logoFile")?.files?.[0] ||
-        null;
-
-
-    /* -----------------------------------------
-       VALIDATION
-    ----------------------------------------- */
-
-    if (!brandName) {
-
-        showBrandingMessage(
-            "Brand name is required.",
-            true
-        );
-
-        return;
-    }
-
-
-    if (
-        !/^#[0-9a-fA-F]{6}$/
-            .test(primaryColor)
-    ) {
-
-        showBrandingMessage(
-            "Primary color must be a valid HEX color.",
-            true
-        );
-
-        return;
-    }
-
-
-    if (
-        !/^#[0-9a-fA-F]{6}$/
-            .test(accentColor)
-    ) {
-
-        showBrandingMessage(
-            "Accent color must be a valid HEX color.",
-            true
-        );
-
-        return;
-    }
-
-
-    if (
-        supportEmail &&
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/
-            .test(supportEmail)
-    ) {
-
-        showBrandingMessage(
-            "Please enter a valid support email.",
-            true
-        );
-
-        return;
-    }
-
-
-    if (logoFile) {
-
-        if (
-            logoFile.size >
-            3 * 1024 * 1024
-        ) {
-
-            showBrandingMessage(
-                "Logo must be smaller than 3 MB.",
-                true
-            );
-
-            return;
-        }
-
-    }
-
+    let data = {};
 
     try {
 
-        if (saveButton) {
+        data =
+            raw
+                ? JSON.parse(raw)
+                : {};
 
-            saveButton.disabled =
-                true;
+    } catch {
 
-            saveButton.textContent =
-                "Saving...";
-
-        }
-
-
-        showBrandingMessage(
-            "Saving branding settings...",
-            false
-        );
-
-
-        /*
-         * -------------------------------------------------
-         * Upload logo if selected
-         * -------------------------------------------------
-         */
-
-        let finalLogoUrl =
-            logoUrl;
-
-
-        if (logoFile) {
-
-            const session =
-                await getSession();
-
-
-            if (!session) {
-                return;
-            }
-
-
-            const fileExtension =
-                getFileExtension(
-                    logoFile.name,
-                    logoFile.type
-                );
-
-
-            const fileName =
-                `branding/logo-${Date.now()}-${Math.random()
-                    .toString(36)
-                    .slice(2)}.${fileExtension}`;
-
-
-            const {
-                error:
-                    uploadError
-            } =
-                await sb.storage
-                    .from("branding")
-                    .upload(
-                        fileName,
-                        logoFile,
-                        {
-                            cacheControl:
-                                "3600",
-                            upsert:
-                                false,
-                            contentType:
-                                logoFile.type
-                        }
-                    );
-
-
-            if (uploadError) {
-
-                console.error(
-                    "Logo upload error:",
-                    uploadError
-                );
-
-                throw new Error(
-                    "Logo upload failed: " +
-                    uploadError.message
-                );
-
-            }
-
-
-            const {
-                data:
-                    publicUrlData
-            } =
-                sb.storage
-                    .from("branding")
-                    .getPublicUrl(
-                        fileName
-                    );
-
-
-            finalLogoUrl =
-                publicUrlData?.publicUrl ||
-                "";
-
-        }
-
-
-        /*
-         * -------------------------------------------------
-         * Send branding update to Admin Function
-         * -------------------------------------------------
-         */
-
-        const data =
-            await api(
-                "settings",
-                {
-                    action:
-                        "save_branding",
-
-                    brand_name:
-                        brandName,
-
-                    logo_url:
-                        finalLogoUrl,
-
-                    primary_color:
-                        primaryColor,
-
-                    accent_color:
-                        accentColor,
-
-                    support_email:
-                        supportEmail
-                }
-            );
-
-
-        if (
-            data &&
-            data.error
-        ) {
-
-            throw new Error(
-                data.error
-            );
-
-        }
-
-
-        currentBrandingSettings = {
-
-            brand_name:
-                brandName,
-
-            logo_url:
-                finalLogoUrl,
-
-            primary_color:
-                primaryColor,
-
-            accent_color:
-                accentColor,
-
-            support_email:
-                supportEmail
-
+        data = {
+            error: raw
         };
-
-
-        showBrandingMessage(
-            "Branding settings saved successfully.",
-            false
-        );
-
-
-        /*
-         * Refresh logo URL field
-         */
-
-        if ($("logoUrl")) {
-
-            $("logoUrl").value =
-                finalLogoUrl;
-
-        }
-
-
-    } catch (error) {
-
-        console.error(
-            "Save branding error:",
-            error
-        );
-
-
-        showBrandingMessage(
-            error?.message ||
-                "Unable to save branding settings.",
-            true
-        );
-
-
-    } finally {
-
-        if (saveButton) {
-
-            saveButton.disabled =
-                false;
-
-            saveButton.textContent =
-                "Save Branding Settings";
-
-        }
-
     }
 
+
+    console.log(
+        "Admin action status:",
+        response.status
+    );
+
+    console.log(
+        "Admin action response:",
+        data
+    );
+
+
+    if (!response.ok) {
+
+        throw new Error(
+            data?.error ||
+            data?.message ||
+            `Action failed (${response.status})`
+        );
+    }
+
+
+    return data;
 }
 
 
 /* =========================================================
-   BRANDING MESSAGE
+   NAVIGATION
 ========================================================= */
 
-function showBrandingMessage(
-    text,
-    isError
-) {
-
-    const element =
-        $("brandingMessage");
-
-    if (!element) {
-        return;
-    }
-
-
-    element.textContent =
-        text;
-
-    element.style.display =
-        "inline-block";
-
-    element.style.color =
-        isError
-            ? "#dc2626"
-            : "#16a34a";
-
-}
-
-
-/* =========================================================
-   FILE EXTENSION
-========================================================= */
-
-function getFileExtension(
-    fileName,
-    mimeType
-) {
-
-    const existing =
-        String(
-            fileName || ""
-        )
-            .split(".")
-            .pop()
-            .toLowerCase();
-
-
-    if (
-        [
-            "png",
-            "jpg",
-            "jpeg",
-            "webp",
-            "svg"
-        ].includes(existing)
-    ) {
-
-        return existing ===
-            "jpeg"
-            ? "jpg"
-            : existing;
-
-    }
-
-
-    switch (mimeType) {
-
-        case "image/png":
-            return "png";
-
-        case "image/jpeg":
-            return "jpg";
-
-        case "image/webp":
-            return "webp";
-
-        case "image/svg+xml":
-            return "svg";
-
-        default:
-            return "png";
-
-    }
-
-}
-
-/* =========================================================
-   SECTION ROUTER
-========================================================= */
-
-async function loadSection(
+function setActiveNav(
     section
 ) {
-
-    currentSection =
-        section;
-
-    currentRequest++;
-
-    const requestId =
-        currentRequest;
 
     document
         .querySelectorAll(
@@ -3103,11 +477,85 @@ async function loadSection(
 
                 button.classList.toggle(
                     "active",
-                    button.dataset.section === section
+                    button.dataset.section ===
+                        section
                 );
 
             }
         );
+}
+
+
+function sectionTitle(
+    section
+) {
+
+    const titles = {
+
+        dashboard:
+            "Admin Dashboard",
+
+        users:
+            "Users",
+
+        websites:
+            "Websites",
+
+        subscriptions:
+            "Subscriptions",
+
+        payments:
+            "Payments",
+
+        ai:
+            "AI Operations",
+
+        approvals:
+            "Approvals",
+
+        support:
+            "Support Tickets",
+
+        audit:
+            "Audit Logs",
+
+        settings:
+            "Settings"
+    };
+
+    return (
+        titles[section] ||
+        "Admin Panel"
+    );
+}
+
+
+/* =========================================================
+   LOAD SECTION
+========================================================= */
+
+async function loadSection(
+    section
+) {
+
+    currentSection =
+        section;
+
+    setActiveNav(
+        section
+    );
+
+    const title =
+        $("pageTitle");
+
+    if (title) {
+
+        title.textContent =
+            sectionTitle(
+                section
+            );
+    }
+
 
     try {
 
@@ -3185,220 +633,3420 @@ async function loadSection(
 
             default:
 
-                throw new Error(
+                errorBox(
                     "Unknown admin section."
                 );
         }
 
-        if (
-            requestId !== currentRequest
-        ) {
-            return;
-        }
-
     } catch (error) {
-
-        if (
-            requestId !== currentRequest
-        ) {
-            return;
-        }
 
         console.error(
             "Admin section error:",
             error
         );
 
-        showError(
-            error,
-            section
+        errorBox(
+            error?.message ||
+            "Unable to load admin section."
         );
     }
 }
 
 
 /* =========================================================
-   FORMAT LABEL
+   DASHBOARD
 ========================================================= */
 
-function formatLabel(
-    value
+async function loadDashboard() {
+
+    loading(
+        "Loading dashboard..."
+    );
+
+
+    const data =
+        await api(
+            "dashboard"
+        );
+
+
+    const metrics =
+        data.metrics || {};
+
+
+    const logs =
+        data.logs || [];
+
+
+    const content =
+        $("content");
+
+
+    content.innerHTML = `
+
+        <div class="stats">
+
+            ${Object.entries(
+                metrics
+            )
+                .map(
+                    ([key, value]) => `
+
+                    <div class="stat">
+
+                        <small>
+                            ${escapeHtml(
+                                key
+                            )}
+                        </small>
+
+                        <br>
+
+                        <b>
+                            ${escapeHtml(
+                                value
+                            )}
+                        </b>
+
+                    </div>
+
+                `
+                )
+                .join("")}
+
+        </div>
+
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        Recent Audit Activity
+                    </h2>
+
+                    <p>
+                        Latest administrative activity.
+                    </p>
+
+                </div>
+
+                <button
+                    id="dashboardRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            ${
+                logs.length
+                    ? `
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Time
+                                    </th>
+
+                                    <th>
+                                        Action
+                                    </th>
+
+                                    <th>
+                                        User
+                                    </th>
+
+                                    <th>
+                                        Entity
+                                    </th>
+
+                                    <th>
+                                        Details
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                ${logs
+                                    .map(
+                                        log => `
+
+                                        <tr>
+
+                                            <td>
+                                                ${formatDate(
+                                                    log.created_at
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                <span class="badge">
+                                                    ${escapeHtml(
+                                                        log.action ||
+                                                        log.event ||
+                                                        "—"
+                                                    )}
+                                                </span>
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    log.user_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    log.entity_id ||
+                                                    log.entity_type ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    JSON.stringify(
+                                                        log.metadata ||
+                                                        log.details ||
+                                                        {}
+                                                    )
+                                                )}
+                                            </td>
+
+                                        </tr>
+
+                                    `
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                    : `
+                    <div class="empty">
+                        No audit activity found.
+                    </div>
+                `
+            }
+
+        </div>
+    `;
+
+
+    const refresh =
+        $("dashboardRefresh");
+
+    if (refresh) {
+
+        refresh.onclick =
+            () =>
+                loadSection(
+                    "dashboard"
+                );
+    }
+}
+
+
+/* =========================================================
+   USERS
+========================================================= */
+
+async function loadUsers() {
+
+    loading(
+        "Loading users..."
+    );
+
+
+    const content =
+        $("content");
+
+
+    content.innerHTML = `
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        User Management
+                    </h2>
+
+                    <p>
+                        Manage users, roles, plans and subscriptions.
+                    </p>
+
+                </div>
+
+                <button
+                    id="usersRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            <div
+                style="
+                    display:flex;
+                    gap:10px;
+                    flex-wrap:wrap;
+                    margin-bottom:20px;
+                "
+            >
+
+                <input
+                    id="userSearch"
+                    class="search-box"
+                    placeholder="Search name, email, phone, role, plan..."
+                >
+
+                <button
+                    id="userSearchButton"
+                >
+                    Search
+                </button>
+
+            </div>
+
+
+            <div id="usersTable">
+                Loading users...
+            </div>
+
+        </div>
+
+    `;
+
+
+    const renderUsers =
+        async (
+            search = ""
+        ) => {
+
+            const data =
+                await api(
+                    "users",
+                    {
+                        search
+                    }
+                );
+
+
+            currentUsers =
+                data.users || [];
+
+
+            renderUsersTable(
+                currentUsers
+            );
+        };
+
+
+    $("usersRefresh").onclick =
+        () =>
+            renderUsers();
+
+
+    $("userSearchButton").onclick =
+        () =>
+            renderUsers(
+                $("userSearch")
+                    .value
+                    .trim()
+            );
+
+
+    $("userSearch").addEventListener(
+        "keydown",
+        event => {
+
+            if (
+                event.key ===
+                "Enter"
+            ) {
+
+                renderUsers(
+                    event.target.value
+                        .trim()
+                );
+            }
+
+        }
+    );
+
+
+    await renderUsers();
+}
+
+
+/* =========================================================
+   USERS TABLE
+========================================================= */
+
+function renderUsersTable(
+    users
 ) {
 
-    return String(
-        value ?? ""
-    )
-        .replaceAll(
-            "_",
-            " "
+    const wrapper =
+        $("usersTable");
+
+
+    if (!wrapper) {
+        return;
+    }
+
+
+    if (!users.length) {
+
+        wrapper.innerHTML = `
+            <div class="empty">
+                No users found.
+            </div>
+        `;
+
+        return;
+    }
+
+
+    wrapper.innerHTML = `
+
+        <div class="admin-table-wrapper">
+
+            <table class="admin-table">
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+                            User
+                        </th>
+
+                        <th>
+                            Role
+                        </th>
+
+                        <th>
+                            Plan
+                        </th>
+
+                        <th>
+                            Billing
+                        </th>
+
+                        <th>
+                            Status
+                        </th>
+
+                        <th>
+                            Websites
+                        </th>
+
+                        <th>
+                            AI Runs
+                        </th>
+
+                        <th>
+                            Subscription Ends
+                        </th>
+
+                        <th>
+                            Created
+                        </th>
+
+                        <th>
+                            Actions
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                    ${users
+                        .map(
+                            user => `
+
+                            <tr>
+
+                                <td>
+
+                                    <strong>
+                                        ${escapeHtml(
+                                            user.full_name ||
+                                            "Unnamed User"
+                                        )}
+                                    </strong>
+
+                                    <br>
+
+                                    <small>
+                                        ${escapeHtml(
+                                            user.email ||
+                                            "No email"
+                                        )}
+                                    </small>
+
+                                    ${
+                                        user.phone
+                                            ? `
+                                                <br>
+                                                <small>
+                                                    ${escapeHtml(
+                                                        user.phone
+                                                    )}
+                                                </small>
+                                            `
+                                            : ""
+                                    }
+
+                                </td>
+
+
+                                <td>
+
+                                    <span class="badge">
+
+                                        ${escapeHtml(
+                                            user.role ||
+                                            "user"
+                                        )}
+
+                                    </span>
+
+                                </td>
+
+
+                                <td>
+
+                                    ${escapeHtml(
+                                        user.plan_id ||
+                                        "free"
+                                    )}
+
+                                </td>
+
+
+                                <td>
+
+                                    ${escapeHtml(
+                                        user.billing_cycle ||
+                                        "free"
+                                    )}
+
+                                </td>
+
+
+                                <td>
+
+                                    <span class="badge">
+
+                                        ${escapeHtml(
+                                            user.subscription_status ||
+                                            "none"
+                                        )}
+
+                                    </span>
+
+                                </td>
+
+
+                                <td>
+                                    ${escapeHtml(
+                                        user.websites ??
+                                        0
+                                    )}
+                                </td>
+
+
+                                <td>
+                                    ${escapeHtml(
+                                        user.ai_runs ??
+                                        0
+                                    )}
+                                </td>
+
+
+                                <td>
+
+                                    ${formatDateOnly(
+                                        user.subscription_ends_at
+                                    )}
+
+                                </td>
+
+
+                                <td>
+
+                                    ${formatDateOnly(
+                                        user.created_at
+                                    )}
+
+                                </td>
+
+
+                                <td>
+
+                                    <button
+                                        class="manage-user"
+                                        data-user-id="${escapeHtml(
+                                            user.id
+                                        )}"
+                                    >
+                                        Manage
+                                    </button>
+
+                                </td>
+
+                            </tr>
+
+                        `
+                        )
+                        .join("")}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    `;
+
+
+    wrapper
+        .querySelectorAll(
+            ".manage-user"
         )
-        .replace(
-            /\b\w/g,
-            character =>
-                character.toUpperCase()
+        .forEach(
+            button => {
+
+                button.onclick =
+                    () =>
+                        openUserManager(
+                            button.dataset.userId
+                        );
+
+            }
         );
 }
 
 
 /* =========================================================
-   FORMAT DATE
+   USER MANAGER
 ========================================================= */
 
-function formatDate(
-    value
+async function openUserManager(
+    userId
 ) {
 
-    if (!value) {
-        return "—";
+    const user =
+        currentUsers.find(
+            item =>
+                item.id ===
+                userId
+        );
+
+
+    if (!user) {
+
+        showMessage(
+            "User not found.",
+            "error"
+        );
+
+        return;
     }
 
-    const date =
-        new Date(value);
 
-    if (
-        Number.isNaN(
-            date.getTime()
-        )
-    ) {
-        return "—";
-    }
-
-    return date.toLocaleDateString(
-        undefined,
-        {
-            year:
-                "numeric",
-
-            month:
-                "short",
-
-            day:
-                "numeric"
-        }
-    );
-}
+    let plans =
+        currentPlans;
 
 
-/* =========================================================
-   FORMAT DATE + TIME
-========================================================= */
-
-function formatDateTime(
-    value
-) {
-
-    if (!value) {
-        return "—";
-    }
-
-    const date =
-        new Date(value);
-
-    if (
-        Number.isNaN(
-            date.getTime()
-        )
-    ) {
-        return "—";
-    }
-
-    return date.toLocaleString(
-        undefined,
-        {
-            year:
-                "numeric",
-
-            month:
-                "short",
-
-            day:
-                "numeric",
-
-            hour:
-                "2-digit",
-
-            minute:
-                "2-digit"
-        }
-    );
-}
-
-
-/* =========================================================
-   FORMAT SETTING VALUE
-========================================================= */
-
-function formatSettingValue(
-    value
-) {
-
-    if (
-        value === null ||
-        value === undefined
-    ) {
-        return "—";
-    }
-
-    if (
-        typeof value === "object"
-    ) {
+    if (!plans.length) {
 
         try {
 
-            return JSON.stringify(
-                value
-            );
+            const data =
+                await api(
+                    "plans"
+                );
+
+            plans =
+                data.plans || [];
+
+            currentPlans =
+                plans;
 
         } catch (error) {
 
-            return String(
-                value
+            console.warn(
+                "Unable to load plans:",
+                error
             );
         }
     }
 
-    return String(
-        value
+
+    const modal =
+        document.createElement(
+            "div"
+        );
+
+
+    modal.id =
+        "userManagerModal";
+
+
+    modal.style.position =
+        "fixed";
+
+    modal.style.inset =
+        "0";
+
+    modal.style.background =
+        "rgba(0,0,0,.55)";
+
+    modal.style.zIndex =
+        "99998";
+
+    modal.style.display =
+        "flex";
+
+    modal.style.alignItems =
+        "center";
+
+    modal.style.justifyContent =
+        "center";
+
+    modal.style.padding =
+        "20px";
+
+
+    modal.innerHTML = `
+
+        <div
+            style="
+                background:#fff;
+                width:min(650px,100%);
+                max-height:90vh;
+                overflow:auto;
+                border-radius:16px;
+                padding:24px;
+                box-shadow:0 20px 60px rgba(0,0,0,.25);
+            "
+        >
+
+            <div
+                style="
+                    display:flex;
+                    justify-content:space-between;
+                    align-items:center;
+                    gap:15px;
+                    margin-bottom:20px;
+                "
+            >
+
+                <div>
+
+                    <h2 style="margin:0">
+                        Manage User
+                    </h2>
+
+                    <p style="margin:6px 0 0">
+                        ${escapeHtml(
+                            user.email ||
+                            user.full_name ||
+                            user.id
+                        )}
+                    </p>
+
+                </div>
+
+                <button
+                    id="closeUserManager"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <div
+                style="
+                    display:grid;
+                    grid-template-columns:1fr 1fr;
+                    gap:16px;
+                "
+            >
+
+                <label>
+
+                    <strong>
+                        Role
+                    </strong>
+
+                    <select
+                        id="manageRole"
+                        style="width:100%;padding:10px;margin-top:6px"
+                    >
+
+                        <option
+                            value="user"
+                            ${user.role === "user"
+                                ? "selected"
+                                : ""}
+                        >
+                            User
+                        </option>
+
+                        <option
+                            value="admin"
+                            ${user.role === "admin"
+                                ? "selected"
+                                : ""}
+                        >
+                            Admin
+                        </option>
+
+                    </select>
+
+                </label>
+
+
+                <label>
+
+                    <strong>
+                        Plan
+                    </strong>
+
+                    <select
+                        id="managePlan"
+                        style="width:100%;padding:10px;margin-top:6px"
+                    >
+
+                        ${
+                            plans.length
+                                ? plans
+                                    .map(
+                                        plan => `
+
+                                        <option
+                                            value="${escapeHtml(
+                                                plan.id
+                                            )}"
+                                            ${
+                                                plan.id ===
+                                                user.plan_id
+                                                    ? "selected"
+                                                    : ""
+                                            }
+                                        >
+                                            ${escapeHtml(
+                                                plan.name ||
+                                                plan.id
+                                            )}
+                                        </option>
+
+                                    `
+                                    )
+                                    .join("")
+                                : `
+
+                                    <option
+                                        value="${escapeHtml(
+                                            user.plan_id ||
+                                            "free"
+                                        )}"
+                                        selected
+                                    >
+                                        ${escapeHtml(
+                                            user.plan_id ||
+                                            "free"
+                                        )}
+                                    </option>
+
+                                `
+                        }
+
+                    </select>
+
+                </label>
+
+
+                <label>
+
+                    <strong>
+                        Billing Cycle
+                    </strong>
+
+                    <select
+                        id="manageBilling"
+                        style="width:100%;padding:10px;margin-top:6px"
+                    >
+
+                        <option
+                            value="free"
+                            ${user.billing_cycle === "free"
+                                ? "selected"
+                                : ""}
+                        >
+                            Free
+                        </option>
+
+                        <option
+                            value="monthly"
+                            ${user.billing_cycle === "monthly"
+                                ? "selected"
+                                : ""}
+                        >
+                            Monthly
+                        </option>
+
+                        <option
+                            value="yearly"
+                            ${user.billing_cycle === "yearly"
+                                ? "selected"
+                                : ""}
+                        >
+                            Yearly
+                        </option>
+
+                    </select>
+
+                </label>
+
+
+                <label>
+
+                    <strong>
+                        Subscription Status
+                    </strong>
+
+                    <select
+                        id="manageStatus"
+                        style="width:100%;padding:10px;margin-top:6px"
+                    >
+
+                        <option
+                            value="trial"
+                            ${user.subscription_status === "trial"
+                                ? "selected"
+                                : ""}
+                        >
+                            Trial
+                        </option>
+
+                        <option
+                            value="active"
+                            ${user.subscription_status === "active"
+                                ? "selected"
+                                : ""}
+                        >
+                            Active
+                        </option>
+
+                        <option
+                            value="paused"
+                            ${user.subscription_status === "paused"
+                                ? "selected"
+                                : ""}
+                        >
+                            Paused
+                        </option>
+
+                        <option
+                            value="cancelled"
+                            ${user.subscription_status === "cancelled"
+                                ? "selected"
+                                : ""}
+                        >
+                            Cancelled
+                        </option>
+
+                    </select>
+
+                </label>
+
+
+                <label>
+
+                    <strong>
+                        Extend Subscription
+                    </strong>
+
+                    <input
+                        id="manageDays"
+                        type="number"
+                        min="1"
+                        value="30"
+                        style="width:100%;padding:10px;margin-top:6px"
+                    >
+
+                    <small>
+                        Number of days to add.
+                    </small>
+
+                </label>
+
+            </div>
+
+
+            <div
+                style="
+                    margin-top:20px;
+                    padding:14px;
+                    background:#f9fafb;
+                    border-radius:10px;
+                "
+            >
+
+                <strong>
+                    Current subscription
+                </strong>
+
+                <br>
+
+                Plan:
+                ${escapeHtml(
+                    user.plan_id ||
+                    "free"
+                )}
+
+                <br>
+
+                Status:
+                ${escapeHtml(
+                    user.subscription_status ||
+                    "none"
+                )}
+
+                <br>
+
+                Ends:
+                ${formatDate(
+                    user.subscription_ends_at
+                )}
+
+            </div>
+
+
+            <div
+                style="
+                    display:flex;
+                    justify-content:flex-end;
+                    gap:10px;
+                    flex-wrap:wrap;
+                    margin-top:24px;
+                "
+            >
+
+                <button
+                    id="pauseUserSubscription"
+                >
+                    Pause
+                </button>
+
+                <button
+                    id="resumeUserSubscription"
+                >
+                    Resume
+                </button>
+
+                <button
+                    id="extendUserSubscription"
+                >
+                    Extend
+                </button>
+
+                <button
+                    id="saveUserChanges"
+                >
+                    Save Changes
+                </button>
+
+            </div>
+
+        </div>
+
+    `;
+
+
+    document.body.appendChild(
+        modal
     );
+
+
+    $("closeUserManager").onclick =
+        () =>
+            modal.remove();
+
+
+    modal.addEventListener(
+        "click",
+        event => {
+
+            if (
+                event.target ===
+                modal
+            ) {
+
+                modal.remove();
+            }
+
+        }
+    );
+
+
+    $("saveUserChanges").onclick =
+        async () => {
+
+            const role =
+                $("manageRole")
+                    .value;
+
+            const planId =
+                $("managePlan")
+                    .value;
+
+            const billingCycle =
+                $("manageBilling")
+                    .value;
+
+            const status =
+                $("manageStatus")
+                    .value;
+
+
+            if (
+                role === "admin" &&
+                user.role !== "admin"
+            ) {
+
+                const confirmed =
+                    confirm(
+                        "Grant administrator access to this user?"
+                    );
+
+                if (!confirmed) {
+                    return;
+                }
+            }
+
+
+            try {
+
+                const button =
+                    $("saveUserChanges");
+
+                button.disabled =
+                    true;
+
+                button.textContent =
+                    "Saving...";
+
+
+                await adminAction(
+                    "update_user",
+                    {
+                        user_id:
+                            user.id,
+
+                        role,
+
+                        plan_id:
+                            planId,
+
+                        billing_cycle:
+                            billingCycle,
+
+                        status
+                    }
+                );
+
+
+                showMessage(
+                    "User updated successfully."
+                );
+
+
+                modal.remove();
+
+
+                await loadUsers();
+
+            } catch (error) {
+
+                console.error(
+                    error
+                );
+
+                showMessage(
+                    error.message ||
+                    "Unable to update user.",
+                    "error"
+                );
+
+                const button =
+                    $("saveUserChanges");
+
+                if (button) {
+
+                    button.disabled =
+                        false;
+
+                    button.textContent =
+                        "Save Changes";
+                }
+            }
+        };
+
+
+    $("pauseUserSubscription").onclick =
+        async () => {
+
+            if (
+                !confirm(
+                    "Pause this user's subscription?"
+                )
+            ) {
+                return;
+            }
+
+
+            try {
+
+                await adminAction(
+                    "pause_subscription",
+                    {
+                        user_id:
+                            user.id
+                    }
+                );
+
+
+                showMessage(
+                    "Subscription paused."
+                );
+
+
+                modal.remove();
+
+                await loadUsers();
+
+            } catch (error) {
+
+                showMessage(
+                    error.message ||
+                    "Unable to pause subscription.",
+                    "error"
+                );
+            }
+        };
+
+
+    $("resumeUserSubscription").onclick =
+        async () => {
+
+            if (
+                !confirm(
+                    "Resume this user's subscription?"
+                )
+            ) {
+                return;
+            }
+
+
+            try {
+
+                await adminAction(
+                    "resume_subscription",
+                    {
+                        user_id:
+                            user.id
+                    }
+                );
+
+
+                showMessage(
+                    "Subscription resumed."
+                );
+
+
+                modal.remove();
+
+                await loadUsers();
+
+            } catch (error) {
+
+                showMessage(
+                    error.message ||
+                    "Unable to resume subscription.",
+                    "error"
+                );
+            }
+        };
+
+
+    $("extendUserSubscription").onclick =
+        async () => {
+
+            const days =
+                Number(
+                    $("manageDays")
+                        .value
+                );
+
+
+            if (
+                !Number.isInteger(days) ||
+                days < 1
+            ) {
+
+                showMessage(
+                    "Enter a valid number of days.",
+                    "error"
+                );
+
+                return;
+            }
+
+
+            if (
+                !confirm(
+                    `Extend this subscription by ${days} day(s)?`
+                )
+            ) {
+                return;
+            }
+
+
+            try {
+
+                await adminAction(
+                    "extend_subscription",
+                    {
+                        user_id:
+                            user.id,
+
+                        days
+                    }
+                );
+
+
+                showMessage(
+                    `Subscription extended by ${days} day(s).`
+                );
+
+
+                modal.remove();
+
+                await loadUsers();
+
+            } catch (error) {
+
+                showMessage(
+                    error.message ||
+                    "Unable to extend subscription.",
+                    "error"
+                );
+            }
+        };
 }
 
 
 /* =========================================================
-   ESCAPE HTML
+   WEBSITES
 ========================================================= */
 
-function escapeHtml(
-    value
-) {
+async function loadWebsites() {
 
-    return String(
-        value ?? ""
-    )
-        .replaceAll(
-            "&",
-            "&amp;"
-        )
-        .replaceAll(
-            "<",
-            "&lt;"
-        )
-        .replaceAll(
-            ">",
-            "&gt;"
-        )
-        .replaceAll(
-            '"',
-            "&quot;"
-        )
-        .replaceAll(
-            "'",
-            "&#039;"
+    loading(
+        "Loading websites..."
+    );
+
+
+    const data =
+        await api(
+            "websites"
         );
+
+
+    const websites =
+        data.websites || [];
+
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        Websites
+                    </h2>
+
+                    <p>
+                        ${websites.length}
+                        website record(s).
+                    </p>
+
+                </div>
+
+                <button
+                    id="websitesRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            ${
+                websites.length
+                    ? `
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Name
+                                    </th>
+
+                                    <th>
+                                        URL
+                                    </th>
+
+                                    <th>
+                                        User
+                                    </th>
+
+                                    <th>
+                                        Status
+                                    </th>
+
+                                    <th>
+                                        Crawl Frequency
+                                    </th>
+
+                                    <th>
+                                        Last Crawled
+                                    </th>
+
+                                    <th>
+                                        Created
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                ${websites
+                                    .map(
+                                        site => `
+
+                                        <tr>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    site.name ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    site.url ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    site.user_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+
+                                                <span class="badge">
+
+                                                    ${escapeHtml(
+                                                        site.status ||
+                                                        "—"
+                                                    )}
+
+                                                </span>
+
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    site.crawl_frequency ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${formatDate(
+                                                    site.last_crawled_at
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${formatDateOnly(
+                                                    site.created_at
+                                                )}
+                                            </td>
+
+                                        </tr>
+
+                                    `
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                    : `
+                    <div class="empty">
+                        No websites found.
+                    </div>
+                `
+            }
+
+        </div>
+    `;
+
+
+    $("websitesRefresh").onclick =
+        () =>
+            loadWebsites();
 }
 
 
 /* =========================================================
-   NAVIGATION EVENTS
+   SUBSCRIPTIONS
+========================================================= */
+
+async function loadSubscriptions() {
+
+    loading(
+        "Loading subscriptions..."
+    );
+
+
+    const data =
+        await api(
+            "subscriptions"
+        );
+
+
+    const subscriptions =
+        data.subscriptions || [];
+
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        Subscriptions
+                    </h2>
+
+                    <p>
+                        ${subscriptions.length}
+                        subscription record(s).
+                    </p>
+
+                </div>
+
+                <button
+                    id="subscriptionsRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            ${
+                subscriptions.length
+                    ? `
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        User
+                                    </th>
+
+                                    <th>
+                                        Plan
+                                    </th>
+
+                                    <th>
+                                        Billing
+                                    </th>
+
+                                    <th>
+                                        Status
+                                    </th>
+
+                                    <th>
+                                        Provider
+                                    </th>
+
+                                    <th>
+                                        Started
+                                    </th>
+
+                                    <th>
+                                        Ends
+                                    </th>
+
+                                    <th>
+                                        Updated
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                ${subscriptions
+                                    .map(
+                                        sub => `
+
+                                        <tr>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    sub.user_id
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    sub.plan_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    sub.billing_cycle ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+
+                                                <span class="badge">
+                                                    ${escapeHtml(
+                                                        sub.status ||
+                                                        "—"
+                                                    )}
+                                                </span>
+
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    sub.provider ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${formatDateOnly(
+                                                    sub.started_at
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${formatDateOnly(
+                                                    sub.subscription_ends_at
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${formatDate(
+                                                    sub.updated_at
+                                                )}
+                                            </td>
+
+                                        </tr>
+
+                                    `
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                    : `
+                    <div class="empty">
+                        No subscriptions found.
+                    </div>
+                `
+            }
+
+        </div>
+    `;
+
+
+    $("subscriptionsRefresh").onclick =
+        () =>
+            loadSubscriptions();
+}
+
+
+/* =========================================================
+   PAYMENTS
+========================================================= */
+
+async function loadPayments() {
+
+    loading(
+        "Loading payments..."
+    );
+
+
+    const data =
+        await api(
+            "payments"
+        );
+
+
+    const payments =
+        data.payments || [];
+
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        Payments
+                    </h2>
+
+                    <p>
+                        ${payments.length}
+                        payment record(s).
+                    </p>
+
+                </div>
+
+                <button
+                    id="paymentsRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            ${
+                payments.length
+                    ? `
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        User
+                                    </th>
+
+                                    <th>
+                                        Amount
+                                    </th>
+
+                                    <th>
+                                        Currency
+                                    </th>
+
+                                    <th>
+                                        Razorpay Order
+                                    </th>
+
+                                    <th>
+                                        Payment ID
+                                    </th>
+
+                                    <th>
+                                        Last Payment
+                                    </th>
+
+                                    <th>
+                                        Status
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                ${payments
+                                    .map(
+                                        payment => `
+
+                                        <tr>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    payment.user_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    payment.payment_amount ??
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    payment.currency ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    payment.razorpay_order_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    payment.razorpay_payment_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${formatDate(
+                                                    payment.last_payment_at
+                                                )}
+                                            </td>
+
+                                            <td>
+
+                                                <span class="badge">
+
+                                                    ${escapeHtml(
+                                                        payment.status ||
+                                                        "—"
+                                                    )}
+
+                                                </span>
+
+                                            </td>
+
+                                        </tr>
+
+                                    `
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                    : `
+                    <div class="empty">
+                        No payment records found.
+                    </div>
+                `
+            }
+
+        </div>
+    `;
+
+
+    $("paymentsRefresh").onclick =
+        () =>
+            loadPayments();
+}
+
+
+/* =========================================================
+   AI OPERATIONS
+========================================================= */
+
+async function loadAI() {
+
+    loading(
+        "Loading AI operations..."
+    );
+
+
+    const data =
+        await api(
+            "ai"
+        );
+
+
+    const runs =
+        data.runs || data.ai_runs || [];
+
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        AI Operations
+                    </h2>
+
+                    <p>
+                        ${runs.length}
+                        AI run(s).
+                    </p>
+
+                </div>
+
+                <button
+                    id="aiRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            ${
+                runs.length
+                    ? `
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Agent
+                                    </th>
+
+                                    <th>
+                                        Provider
+                                    </th>
+
+                                    <th>
+                                        Model
+                                    </th>
+
+                                    <th>
+                                        Status
+                                    </th>
+
+                                    <th>
+                                        Tokens
+                                    </th>
+
+                                    <th>
+                                        Cost
+                                    </th>
+
+                                    <th>
+                                        Latency
+                                    </th>
+
+                                    <th>
+                                        Created
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                ${runs
+                                    .map(
+                                        run => `
+
+                                        <tr>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    run.agent ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    run.provider ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    run.model ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+
+                                                <span class="badge">
+
+                                                    ${escapeHtml(
+                                                        run.status ||
+                                                        "—"
+                                                    )}
+
+                                                </span>
+
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    (
+                                                        Number(
+                                                            run.input_tokens ||
+                                                            0
+                                                        ) +
+                                                        Number(
+                                                            run.output_tokens ||
+                                                            0
+                                                        )
+                                                    )
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    run.estimated_cost ??
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    run.latency_ms ??
+                                                    "—"
+                                                )} ms
+                                            </td>
+
+                                            <td>
+                                                ${formatDate(
+                                                    run.created_at
+                                                )}
+                                            </td>
+
+                                        </tr>
+
+                                    `
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                    : `
+                    <div class="empty">
+                        No AI runs found.
+                    </div>
+                `
+            }
+
+        </div>
+    `;
+
+
+    $("aiRefresh").onclick =
+        () =>
+            loadAI();
+}
+
+
+/* =========================================================
+   APPROVALS
+========================================================= */
+
+async function loadApprovals() {
+
+    loading(
+        "Loading approvals..."
+    );
+
+
+    const data =
+        await api(
+            "approvals"
+        );
+
+
+    const approvals =
+        data.approvals || [];
+
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        Approvals
+                    </h2>
+
+                    <p>
+                        ${approvals.length}
+                        approval record(s).
+                    </p>
+
+                </div>
+
+                <button
+                    id="approvalsRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            ${
+                approvals.length
+                    ? `
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Title
+                                    </th>
+
+                                    <th>
+                                        User
+                                    </th>
+
+                                    <th>
+                                        Status
+                                    </th>
+
+                                    <th>
+                                        Risk
+                                    </th>
+
+                                    <th>
+                                        Created
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                ${approvals
+                                    .map(
+                                        item => `
+
+                                        <tr>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    item.title ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    item.user_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+
+                                                <span class="badge">
+
+                                                    ${escapeHtml(
+                                                        item.status ||
+                                                        "—"
+                                                    )}
+
+                                                </span>
+
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    item.risk_level ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${formatDate(
+                                                    item.created_at
+                                                )}
+                                            </td>
+
+                                        </tr>
+
+                                    `
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                    : `
+                    <div class="empty">
+                        No approval records found.
+                    </div>
+                `
+            }
+
+        </div>
+    `;
+
+
+    $("approvalsRefresh").onclick =
+        () =>
+            loadApprovals();
+}
+
+
+/* =========================================================
+   SUPPORT
+========================================================= */
+
+async function loadSupport() {
+
+    loading(
+        "Loading support tickets..."
+    );
+
+
+    const data =
+        await api(
+            "support"
+        );
+
+
+    const tickets =
+        data.tickets ||
+        data.support_tickets ||
+        [];
+
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        Support Tickets
+                    </h2>
+
+                    <p>
+                        ${tickets.length}
+                        ticket(s).
+                    </p>
+
+                </div>
+
+                <button
+                    id="supportRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            ${
+                tickets.length
+                    ? `
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Subject
+                                    </th>
+
+                                    <th>
+                                        User
+                                    </th>
+
+                                    <th>
+                                        Status
+                                    </th>
+
+                                    <th>
+                                        Priority
+                                    </th>
+
+                                    <th>
+                                        Created
+                                    </th>
+
+                                    <th>
+                                        Updated
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                ${tickets
+                                    .map(
+                                        ticket => `
+
+                                        <tr>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    ticket.subject ||
+                                                    ticket.title ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    ticket.user_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+
+                                                <span class="badge">
+
+                                                    ${escapeHtml(
+                                                        ticket.status ||
+                                                        "—"
+                                                    )}
+
+                                                </span>
+
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    ticket.priority ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${formatDate(
+                                                    ticket.created_at
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${formatDate(
+                                                    ticket.updated_at
+                                                )}
+                                            </td>
+
+                                        </tr>
+
+                                    `
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                    : `
+                    <div class="empty">
+                        No support tickets found.
+                    </div>
+                `
+            }
+
+        </div>
+    `;
+
+
+    $("supportRefresh").onclick =
+        () =>
+            loadSupport();
+}
+
+
+/* =========================================================
+   AUDIT
+========================================================= */
+
+async function loadAudit() {
+
+    loading(
+        "Loading audit logs..."
+    );
+
+
+    const data =
+        await api(
+            "audit"
+        );
+
+
+    const logs =
+        data.logs || [];
+
+
+    $("content").innerHTML = `
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        Audit Logs
+                    </h2>
+
+                    <p>
+                        Showing ${logs.length}
+                        record(s).
+                    </p>
+
+                </div>
+
+                <button
+                    id="auditRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            ${
+                logs.length
+                    ? `
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Time
+                                    </th>
+
+                                    <th>
+                                        Action
+                                    </th>
+
+                                    <th>
+                                        User
+                                    </th>
+
+                                    <th>
+                                        Entity
+                                    </th>
+
+                                    <th>
+                                        Metadata
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                ${logs
+                                    .map(
+                                        log => `
+
+                                        <tr>
+
+                                            <td>
+                                                ${formatDate(
+                                                    log.created_at
+                                                )}
+                                            </td>
+
+                                            <td>
+
+                                                <span class="badge">
+
+                                                    ${escapeHtml(
+                                                        log.action ||
+                                                        log.event ||
+                                                        "—"
+                                                    )}
+
+                                                </span>
+
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    log.user_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    log.entity_id ||
+                                                    log.entity_type ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    JSON.stringify(
+                                                        log.metadata ||
+                                                        {}
+                                                    )
+                                                )}
+                                            </td>
+
+                                        </tr>
+
+                                    `
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                    : `
+                    <div class="empty">
+                        No audit logs found.
+                    </div>
+                `
+            }
+
+        </div>
+    `;
+
+
+    $("auditRefresh").onclick =
+        () =>
+            loadAudit();
+}
+
+
+/* =========================================================
+   SETTINGS
+========================================================= */
+
+async function loadSettings() {
+
+    loading(
+        "Loading settings..."
+    );
+
+
+    const data =
+        await api(
+            "settings"
+        );
+
+
+    const settings =
+        data.settings || [];
+
+
+    let branding =
+        settings.find(
+            item =>
+                item.key ===
+                "branding"
+        );
+
+
+    currentBranding =
+        branding?.value || {
+
+            brand_name:
+                "Obsedian.Space",
+
+            logo_url:
+                "",
+
+            primary_color:
+                "#7c3aed",
+
+            accent_color:
+                "#f59e0b",
+
+            support_email:
+                ""
+        };
+
+
+    const content =
+        $("content");
+
+
+    content.innerHTML = `
+
+        <div class="card">
+
+            <div class="admin-header">
+
+                <div>
+
+                    <h2>
+                        Branding Settings
+                    </h2>
+
+                    <p>
+                        Manage the public brand identity.
+                    </p>
+
+                </div>
+
+                <button
+                    id="settingsRefresh"
+                >
+                    Refresh
+                </button>
+
+            </div>
+
+
+            <div
+                style="
+                    display:grid;
+                    grid-template-columns:
+                        repeat(auto-fit,minmax(280px,1fr));
+                    gap:20px;
+                "
+            >
+
+                <div>
+
+                    <label>
+                        <strong>
+                            Brand Name
+                        </strong>
+
+                        <input
+                            id="brandName"
+                            type="text"
+                            value="${escapeHtml(
+                                currentBranding.brand_name ||
+                                ""
+                            )}"
+                            style="
+                                width:100%;
+                                box-sizing:border-box;
+                                padding:12px;
+                                margin-top:6px;
+                            "
+                        >
+
+                    </label>
+
+
+                    <label
+                        style="
+                            display:block;
+                            margin-top:18px;
+                        "
+                    >
+
+                        <strong>
+                            Support Email
+                        </strong>
+
+                        <input
+                            id="supportEmail"
+                            type="email"
+                            value="${escapeHtml(
+                                currentBranding.support_email ||
+                                ""
+                            )}"
+                            style="
+                                width:100%;
+                                box-sizing:border-box;
+                                padding:12px;
+                                margin-top:6px;
+                            "
+                        >
+
+                    </label>
+
+
+                    <label
+                        style="
+                            display:block;
+                            margin-top:18px;
+                        "
+                    >
+
+                        <strong>
+                            Logo URL
+                        </strong>
+
+                        <input
+                            id="logoUrl"
+                            type="text"
+                            value="${escapeHtml(
+                                currentBranding.logo_url ||
+                                ""
+                            )}"
+                            placeholder="https://..."
+                            style="
+                                width:100%;
+                                box-sizing:border-box;
+                                padding:12px;
+                                margin-top:6px;
+                            "
+                        >
+
+                    </label>
+
+
+                    <label
+                        style="
+                            display:block;
+                            margin-top:18px;
+                        "
+                    >
+
+                        <strong>
+                            Choose Logo
+                        </strong>
+
+                        <input
+                            id="logoFile"
+                            type="file"
+                            accept="image/*"
+                            style="
+                                display:block;
+                                margin-top:8px;
+                            "
+                        >
+
+                        <small>
+                            Select an image from your computer.
+                        </small>
+
+                    </label>
+
+                </div>
+
+
+                <div>
+
+                    <label>
+
+                        <strong>
+                            Primary Color
+                        </strong>
+
+                        <div
+                            style="
+                                display:flex;
+                                gap:10px;
+                                align-items:center;
+                                margin-top:6px;
+                            "
+                        >
+
+                            <input
+                                id="primaryColor"
+                                type="color"
+                                value="${escapeHtml(
+                                    currentBranding.primary_color ||
+                                    "#7c3aed"
+                                )}"
+                            >
+
+                            <input
+                                id="primaryColorText"
+                                type="text"
+                                value="${escapeHtml(
+                                    currentBranding.primary_color ||
+                                    "#7c3aed"
+                                )}"
+                                style="
+                                    padding:10px;
+                                    flex:1;
+                                "
+                            >
+
+                        </div>
+
+                    </label>
+
+
+                    <label
+                        style="
+                            display:block;
+                            margin-top:20px;
+                        "
+                    >
+
+                        <strong>
+                            Accent Color
+                        </strong>
+
+                        <div
+                            style="
+                                display:flex;
+                                gap:10px;
+                                align-items:center;
+                                margin-top:6px;
+                            "
+                        >
+
+                            <input
+                                id="accentColor"
+                                type="color"
+                                value="${escapeHtml(
+                                    currentBranding.accent_color ||
+                                    "#f59e0b"
+                                )}"
+                            >
+
+                            <input
+                                id="accentColorText"
+                                type="text"
+                                value="${escapeHtml(
+                                    currentBranding.accent_color ||
+                                    "#f59e0b"
+                                )}"
+                                style="
+                                    padding:10px;
+                                    flex:1;
+                                "
+                            >
+
+                        </div>
+
+                    </label>
+
+
+                    <div
+                        style="
+                            margin-top:24px;
+                            padding:20px;
+                            border:1px solid #e5e7eb;
+                            border-radius:12px;
+                            text-align:center;
+                        "
+                    >
+
+                        <strong>
+                            Logo Preview
+                        </strong>
+
+                        <div
+                            id="logoPreview"
+                            style="
+                                min-height:100px;
+                                display:flex;
+                                align-items:center;
+                                justify-content:center;
+                                margin-top:12px;
+                            "
+                        ></div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div
+                style="
+                    display:flex;
+                    gap:10px;
+                    margin-top:25px;
+                    flex-wrap:wrap;
+                "
+            >
+
+                <button
+                    id="saveBranding"
+                >
+                    Save Branding
+                </button>
+
+                <button
+                    id="resetBranding"
+                >
+                    Reset
+                </button>
+
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <h2>
+                Stored Settings
+            </h2>
+
+            ${
+                settings.length
+                    ? `
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Key
+                                    </th>
+
+                                    <th>
+                                        Value
+                                    </th>
+
+                                    <th>
+                                        Updated
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                                ${settings
+                                    .map(
+                                        setting => `
+
+                                        <tr>
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    setting.key
+                                                )}
+                                            </td>
+
+                                            <td>
+                                                <pre
+                                                    style="
+                                                        white-space:pre-wrap;
+                                                        margin:0;
+                                                    "
+                                                >${escapeHtml(
+                                                    JSON.stringify(
+                                                        setting.value,
+                                                        null,
+                                                        2
+                                                    )
+                                                )}</pre>
+                                            </td>
+
+                                            <td>
+                                                ${formatDate(
+                                                    setting.updated_at
+                                                )}
+                                            </td>
+
+                                        </tr>
+
+                                    `
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                    : `
+                    <div class="empty">
+                        No settings found.
+                    </div>
+                `
+            }
+
+        </div>
+
+    `;
+
+
+    renderLogoPreview();
+
+
+    $("settingsRefresh").onclick =
+        () =>
+            loadSettings();
+
+
+    $("logoFile").onchange =
+        event => {
+
+            const file =
+                event.target.files?.[0];
+
+            if (!file) {
+                return;
+            }
+
+
+            const reader =
+                new FileReader();
+
+
+            reader.onload =
+                () => {
+
+                    $("logoUrl").value =
+                        reader.result;
+
+                    renderLogoPreview();
+                };
+
+
+            reader.readAsDataURL(
+                file
+            );
+        };
+
+
+    $("logoUrl").oninput =
+        () =>
+            renderLogoPreview();
+
+
+    $("primaryColor").oninput =
+        event => {
+
+            $("primaryColorText")
+                .value =
+                event.target.value;
+        };
+
+
+    $("primaryColorText").oninput =
+        event => {
+
+            if (
+                /^#[0-9A-Fa-f]{6}$/
+                    .test(
+                        event.target.value
+                    )
+            ) {
+
+                $("primaryColor")
+                    .value =
+                    event.target.value;
+            }
+        };
+
+
+    $("accentColor").oninput =
+        event => {
+
+            $("accentColorText")
+                .value =
+                event.target.value;
+        };
+
+
+    $("accentColorText").oninput =
+        event => {
+
+            if (
+                /^#[0-9A-Fa-f]{6}$/
+                    .test(
+                        event.target.value
+                    )
+            ) {
+
+                $("accentColor")
+                    .value =
+                    event.target.value;
+            }
+        };
+
+
+    $("saveBranding").onclick =
+        async () => {
+
+            const brandName =
+                $("brandName")
+                    .value
+                    .trim();
+
+            const logoUrl =
+                $("logoUrl")
+                    .value
+                    .trim();
+
+            const supportEmail =
+                $("supportEmail")
+                    .value
+                    .trim();
+
+            const primaryColor =
+                $("primaryColor")
+                    .value;
+
+            const accentColor =
+                $("accentColor")
+                    .value;
+
+
+            if (!brandName) {
+
+                showMessage(
+                    "Brand name is required.",
+                    "error"
+                );
+
+                return;
+            }
+
+
+            try {
+
+                const button =
+                    $("saveBranding");
+
+                button.disabled =
+                    true;
+
+                button.textContent =
+                    "Saving...";
+
+
+                await adminAction(
+                    "save_branding",
+                    {
+                        branding: {
+
+                            brand_name:
+                                brandName,
+
+                            logo_url:
+                                logoUrl,
+
+                            support_email:
+                                supportEmail,
+
+                            primary_color:
+                                primaryColor,
+
+                            accent_color:
+                                accentColor
+                        }
+                    }
+                );
+
+
+                showMessage(
+                    "Branding saved successfully."
+                );
+
+
+                await loadSettings();
+
+            } catch (error) {
+
+                console.error(
+                    error
+                );
+
+                showMessage(
+                    error.message ||
+                    "Unable to save branding.",
+                    "error"
+                );
+
+            } finally {
+
+                const button =
+                    $("saveBranding");
+
+                if (button) {
+
+                    button.disabled =
+                        false;
+
+                    button.textContent =
+                        "Save Branding";
+                }
+            }
+        };
+
+
+    $("resetBranding").onclick =
+        () => {
+
+            $("brandName").value =
+                "Obsedian.Space";
+
+            $("logoUrl").value =
+                "";
+
+            $("supportEmail").value =
+                "";
+
+            $("primaryColor").value =
+                "#7c3aed";
+
+            $("primaryColorText").value =
+                "#7c3aed";
+
+            $("accentColor").value =
+                "#f59e0b";
+
+            $("accentColorText").value =
+                "#f59e0b";
+
+            renderLogoPreview();
+        };
+}
+
+
+/* =========================================================
+   LOGO PREVIEW
+========================================================= */
+
+function renderLogoPreview() {
+
+    const preview =
+        $("logoPreview");
+
+    if (!preview) {
+        return;
+    }
+
+
+    const logo =
+        $("logoUrl")?.value
+            ?.trim();
+
+
+    const brand =
+        $("brandName")?.value
+            ?.trim() ||
+        "Obsedian.Space";
+
+
+    if (logo) {
+
+        preview.innerHTML = `
+
+            <div>
+
+                <img
+                    src="${escapeHtml(
+                        logo
+                    )}"
+                    alt="Logo preview"
+                    style="
+                        max-width:220px;
+                        max-height:100px;
+                        object-fit:contain;
+                    "
+                    onerror="
+                        this.style.display='none';
+                        this.nextElementSibling.style.display='block';
+                    "
+                >
+
+                <div
+                    style="
+                        display:none;
+                        color:#b91c1c;
+                    "
+                >
+                    Unable to load logo.
+                </div>
+
+                <div
+                    style="
+                        margin-top:10px;
+                        font-weight:700;
+                    "
+                >
+                    ${escapeHtml(
+                        brand
+                    )}
+                </div>
+
+            </div>
+
+        `;
+
+    } else {
+
+        preview.innerHTML = `
+
+            <div
+                style="
+                    font-size:24px;
+                    font-weight:800;
+                "
+            >
+                ${escapeHtml(
+                    brand
+                )}
+            </div>
+
+        `;
+    }
+}
+
+
+/* =========================================================
+   LOGOUT
+========================================================= */
+
+async function logout() {
+
+    try {
+
+        await sb.auth.signOut();
+
+    } catch (error) {
+
+        console.error(
+            "Logout error:",
+            error
+        );
+
+    } finally {
+
+        window.location.href =
+            "/app/";
+    }
+}
+
+
+/* =========================================================
+   NAV BUTTON EVENTS
 ========================================================= */
 
 document
@@ -3410,19 +4058,10 @@ document
 
             button.addEventListener(
                 "click",
-                event => {
-
-                    event.preventDefault();
-
-                    const section =
-                        button.dataset.section;
-
-                    if (!section) {
-                        return;
-                    }
+                () => {
 
                     loadSection(
-                        section
+                        button.dataset.section
                     );
 
                 }
@@ -3433,50 +4072,34 @@ document
 
 
 /* =========================================================
-   LOGOUT
+   LOGOUT BUTTON
 ========================================================= */
 
-if (
-    $("logout")
-) {
+if ($("logout")) {
 
-    $("logout").addEventListener(
-        "click",
-        async () => {
-
-            try {
-
-                await sb.auth.signOut();
-
-            } catch (error) {
-
-                console.error(
-                    "Logout error:",
-                    error
-                );
-            }
-
-            window.location.href =
-                "/app/";
-        }
-    );
+    $("logout").onclick =
+        logout;
 }
 
 
 /* =========================================================
-   AUTH STATE LISTENER
+   AUTH STATE
 ========================================================= */
 
 sb.auth.onAuthStateChange(
     (
         event,
-        session
+        currentSession
     ) => {
+
+        session =
+            currentSession;
+
 
         if (
             event ===
                 "SIGNED_OUT" ||
-            !session
+            !currentSession
         ) {
 
             window.location.href =
