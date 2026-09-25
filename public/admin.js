@@ -30,23 +30,19 @@ let currentSection = "dashboard";
 ========================================================= */
 
 async function getSession() {
-
     try {
-
         const {
             data,
             error
         } = await sb.auth.getSession();
 
         if (error) {
-
             console.error(
                 "Supabase session error:",
                 error
             );
 
-            location.href = "/app/";
-
+            redirectToLogin();
             return null;
         }
 
@@ -54,9 +50,7 @@ async function getSession() {
             data?.session || null;
 
         if (!session) {
-
-            location.href = "/app/";
-
+            redirectToLogin();
             return null;
         }
 
@@ -69,12 +63,35 @@ async function getSession() {
             error
         );
 
-        location.href = "/app/";
-
+        redirectToLogin();
         return null;
     }
 }
 
+
+function redirectToLogin() {
+
+    /*
+     * Remember that the user specifically requested
+     * the Admin Panel.
+     */
+    sessionStorage.setItem(
+        "obsedian_admin_login",
+        "1"
+    );
+
+    const loginUrl =
+        "/app/?redirect=/admin/";
+
+    console.log(
+        "No admin session. Redirecting to:",
+        loginUrl
+    );
+
+    window.location.replace(
+        loginUrl
+    );
+}
 
 /* =========================================================
    ADMIN EDGE FUNCTION API

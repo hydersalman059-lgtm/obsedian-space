@@ -19,450 +19,729 @@ let currentSites = [];
 let loading = false;
 
 
-/* =========================
-   AUTH / BOOT
-========================= */
+/* =========================================================
+   LOGIN / ADMIN REDIRECT HELPERS
+========================================================= */
 
-async function boot() {
+/*
+ * Determine where the user should go after authentication.
+ *
+ * Normal login:
+ *      /app/
+ *
+ * Admin login:
+ *      /admin/
+ *
+ * The admin page sends unauthenticated users to:
+ *
+ *      /app/?redirect=/admin/
+ *
+ * We preserve that destination during the login process.
+ */
 
-    const {
-        data: { session: currentSession }
-    } = await sb.auth.getSession();
+function getRequestedRedirect() {
 
-    session = currentSession;
+    const params =
+        new URLSearchParams(
+            window.location.search
+        );
 
-    paint();
+    const redirect =
+        params.get("redirect");
 
-    sb.auth.onAuthStateChange(async (event, newSession) => {
+    /*
+     * Only allow known internal destinations.
+     *
+     * This prevents an arbitrary external URL from
+     * being used as an authentication redirect.
+     */
 
-        console.log("Auth event:", event);
+    if (
+        redirect === "/admin/" ||
+        redirect === "/admin"
+    ) {
+        return "/admin/";
+    }
 
-        session = newSession;
+    /*
+     * Also support the sessionStorage flag used when
+     * the Admin page sends the user to the login page.
+     */
 
-        paint();
+    if (
+        sessionStorage.getItem(
+            "obsedian_admin_login"
+        ) === "1"
+    ) {
+        return "/admin/";
+    }
 
-        if (event === "SIGNED_IN" && session) {
-            await load();
-        }
-    });
+    return "/app/";
 }
 
 
-/* =========================
+function getAuthRedirectUrl() {
+
+    return (
+        window.location.origin +
+        getRequestedRedirect()
+    );
+}
+
+
+function goAfterLogin() {
+
+    const destination =
+        getRequestedRedirect();
+
+    if (
+        destination === "/admin/"
+    ) {
+
+        /*
+         * Remove the temporary marker before
+         * leaving the application.
+         */
+
+        sessionStorage.removeItem(
+            "obsedian_admin_login"
+        );
+
+        console.log(
+            "Authentication complete. Returning to Admin Panel."
+        );
+
+        window.location.replace(
+            "/admin/"
+        );
+
+        return true;
+    }
+
+    return false;
+}
+
+
+/*
+ * This helper is useful if the browser returns from
+ * a magic link or OAuth callback with an existing session.
+ */
+
+function handleAuthCallbackRedirect() {
+
+    const params =
+        new URLSearchParams(
+            window.location.search
+        );
+
+    const hasAuthCallback =
+        params.has("code") ||
+        window.location.hash.includes(
+            "access_token="
+        ) ||
+        window.location.hash.includes(
+            "refresh_token="
+        );
+
+    if (!hasAuthCallback) {
+        return false;
+    }
+
+    return getRequestedRedirect() === "/admin/";
+}
+
+
+/* =========================================================
+   AUTH / BOOT
+========================================================= */
+
+async function boot() {
+
+    try {
+
+        /*
+         * First check the existing browser session.
+         */
+
+        const {
+            data: {
+                session: currentSession
+            },
+            error
+        } =
+            await sb.auth.getSession();
+
+        if (error) {
+
+            console.error(
+                "Supabase session error:",
+                error
+            );
+        }
+
+        session =
+            currentSession || null;
+
+        /*
+         * If this page was reached through a magic
+         * link / OAuth callback and the requested
+         * destination is Admin, allow Supabase to
+         * finish processing the callback first.
+         */
+
+        if (
+            session &&
+            handleAuthCallbackRedirect()
+        ) {
+
+            console.log(
+                "Authenticated admin callback detected."
+            );
+
+            goAfterLogin();
+
+            return;
+        }
+
+        paint();
+
+        /*
+         * Listen for magic-link / OAuth / logout events.
+         */
+
+        sb.auth.onAuthStateChange(
+            async (
+                event,
+                newSession
+            ) => {
+
+                console.log(
+                    "Auth event:",
+                    event
+                );
+
+                session =
+                    newSession || null;
+
+                /*
+                 * SIGNED_IN can happen after a magic
+                 * link or OAuth callback.
+                 *
+                 * If the login originated from the
+                 * Admin page, return there instead
+                 * of loading the normal dashboard.
+                 */
+
+                if (
+                    event === "SIGNED_IN" &&
+                    session
+                ) {
+
+                    if (
+                        goAfterLogin()
+                    ) {
+                        return;
+                    }
+
+                    paint();
+
+                    await load();
+
+                    return;
+                }
+
+                /*
+                 * SIGNED_OUT should show the normal
+                 * login screen.
+                 */
+
+                paint();
+            }
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Authentication boot error:",
+            error
+        );
+
+        session = null;
+
+        paint();
+    }
+}
+
+
+/* =========================================================
    PAINT LOGIN / DASHBOARD
-========================= */
+========================================================= */
 
 function paint() {
 
-    const loggedIn = !!session;
+    const loggedIn =
+        !!session;
 
-    $("login").classList.toggle("hidden", loggedIn);
-    $("dash").classList.toggle("hidden", !loggedIn);
+    const login =
+        $("login");
 
-    if (loggedIn && !loading) {
+    const dash =
+        $("dash");
+
+    if (login) {
+
+        login.classList.toggle(
+            "hidden",
+            loggedIn
+        );
+    }
+
+    if (dash) {
+
+        dash.classList.toggle(
+            "hidden",
+            !loggedIn
+        );
+    }
+
+    if (
+        loggedIn &&
+        !loading
+    ) {
+
         load();
     }
 }
 
 
-/* =========================
+/* =========================================================
    GOOGLE / GITHUB
-========================= */
+========================================================= */
 
-/* =========================
-   AUTH BUTTONS
-========================= */
-
-async function oauth(provider) {
+async function oauth(
+    provider
+) {
 
     try {
 
         $("msg").textContent =
-            "Connecting to " + provider + "...";
+            "Connecting to " +
+            provider +
+            "...";
 
-        const { error } =
+        const {
+            error
+        } =
             await sb.auth.signInWithOAuth({
-                provider: provider,
+                provider,
+
                 options: {
+                    /*
+                     * IMPORTANT:
+                     *
+                     * Previously this was always:
+                     *
+                     * /app/
+                     *
+                     * It now respects the page from
+                     * which authentication started.
+                     */
+
                     redirectTo:
-                        window.location.origin + "/app/"
+                        getAuthRedirectUrl()
                 }
             });
 
         if (error) {
-            console.error("OAuth error:", error);
-            $("msg").textContent = error.message;
-        }
-
-    } catch (error) {
-
-        console.error("OAuth exception:", error);
-
-        $("msg").textContent =
-            error.message || "OAuth login failed.";
-    }
-}
-
-
-/* =========================
-   EMAIL + PASSWORD
-========================= */
-
-async function passwordLogin() {
-
-    const email =
-        $("email").value.trim();
-
-    const password =
-        $("password").value;
-
-    if (!email) {
-        $("msg").textContent =
-            "Please enter your email.";
-        return;
-    }
-
-    if (!password) {
-        $("msg").textContent =
-            "Please enter your password.";
-        return;
-    }
-
-    const button = $("passwordBtn");
-
-    button.disabled = true;
-
-    $("msg").textContent =
-        "Signing in...";
-
-    try {
-
-        console.log("Starting password login:", email);
-
-        const result =
-            await sb.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
-
-        console.log(
-            "Supabase login response:",
-            result
-        );
-
-        const data = result.data;
-        const error = result.error;
-
-        if (error) {
 
             console.error(
-                "Password login error:",
+                "OAuth error:",
                 error
             );
 
             $("msg").textContent =
                 error.message ||
-                "Unable to sign in.";
-
-            return;
+                "OAuth login failed.";
         }
-
-        session = data.session;
-
-        $("msg").textContent =
-            "Signed in successfully.";
-
-        paint();
 
     } catch (error) {
 
         console.error(
-            "Password login exception:",
+            "OAuth exception:",
             error
         );
 
         $("msg").textContent =
-            error.message ||
-            "Sign in failed.";
-
-    } finally {
-
-        button.disabled = false;
+            error?.message ||
+            "OAuth login failed.";
     }
 }
 
 
-/* =========================
+if ($("google")) {
+
+    $("google").onclick = () =>
+        oauth("google");
+}
+
+
+if ($("github")) {
+
+    $("github").onclick = () =>
+        oauth("github");
+}
+
+
+/* =========================================================
+   EMAIL + PASSWORD LOGIN
+========================================================= */
+
+if ($("passwordBtn")) {
+
+    $("passwordBtn").onclick =
+        async () => {
+
+            const email =
+                $("email").value.trim();
+
+            const password =
+                $("password").value;
+
+            if (!email) {
+
+                $("msg").textContent =
+                    "Please enter your email.";
+
+                return;
+            }
+
+            if (!password) {
+
+                $("msg").textContent =
+                    "Please enter your password.";
+
+                return;
+            }
+
+            $("passwordBtn").disabled =
+                true;
+
+            $("msg").textContent =
+                "Signing in...";
+
+            try {
+
+                const {
+                    data,
+                    error
+                } =
+                    await sb.auth.signInWithPassword({
+                        email,
+                        password
+                    });
+
+                if (error) {
+
+                    console.error(
+                        "Password login error:",
+                        error
+                    );
+
+                    $("msg").textContent =
+                        error.message ||
+                        "Unable to sign in.";
+
+                    return;
+                }
+
+                session =
+                    data?.session || null;
+
+                $("msg").textContent =
+                    "Signed in successfully.";
+
+                /*
+                 * IMPORTANT:
+                 *
+                 * If the login started from /admin/,
+                 * immediately return to /admin/.
+                 *
+                 * The Admin Edge Function will then
+                 * verify the user's role.
+                 */
+
+                if (
+                    goAfterLogin()
+                ) {
+                    return;
+                }
+
+                paint();
+
+            } catch (error) {
+
+                console.error(
+                    "Password login exception:",
+                    error
+                );
+
+                $("msg").textContent =
+                    error?.message ||
+                    "Sign in failed.";
+
+            } finally {
+
+                $("passwordBtn").disabled =
+                    false;
+            }
+        };
+}
+
+
+/* =========================================================
    EMAIL MAGIC LINK
-========================= */
+========================================================= */
 
-async function sendEmailLink() {
+if ($("emailBtn")) {
 
-    const email =
-        $("email").value.trim();
+    $("emailBtn").onclick =
+        async () => {
 
-    if (!email) {
+            const email =
+                $("email").value.trim();
 
-        $("msg").textContent =
-            "Please enter your email.";
+            if (!email) {
 
-        return;
-    }
+                $("msg").textContent =
+                    "Please enter your email.";
 
-    const button = $("emailBtn");
+                return;
+            }
 
-    button.disabled = true;
-
-    $("msg").textContent =
-        "Sending email link...";
-
-    try {
-
-        console.log(
-            "Sending magic link:",
-            email
-        );
-
-        const result =
-            await sb.auth.signInWithOtp({
-                email: email,
-
-                options: {
-                    emailRedirectTo:
-                        window.location.origin +
-                        "/app/"
-                }
-            });
-
-        console.log(
-            "Magic link response:",
-            result
-        );
-
-        if (result.error) {
-
-            console.error(
-                "Magic link error:",
-                result.error
-            );
+            $("emailBtn").disabled =
+                true;
 
             $("msg").textContent =
-                result.error.message;
+                "Sending email link...";
 
-            return;
-        }
+            try {
 
-        $("msg").textContent =
-            "Email link sent. Please check your inbox.";
+                const {
+                    error
+                } =
+                    await sb.auth.signInWithOtp({
 
-    } catch (error) {
+                        email,
 
-        console.error(
-            "Magic link exception:",
-            error
-        );
+                        options: {
 
-        $("msg").textContent =
-            error.message ||
-            "Unable to send email link.";
+                            /*
+                             * IMPORTANT:
+                             *
+                             * Admin login:
+                             *      /admin/
+                             *
+                             * Normal login:
+                             *      /app/
+                             */
 
-    } finally {
+                            emailRedirectTo:
+                                getAuthRedirectUrl()
+                        }
+                    });
 
-        button.disabled = false;
-    }
+                if (error) {
+
+                    console.error(
+                        "Email login error:",
+                        error
+                    );
+
+                    $("msg").textContent =
+                        error.message ||
+                        "Unable to send email link.";
+
+                    return;
+                }
+
+                $("msg").textContent =
+                    "Email link sent. Please check your inbox.";
+
+            } catch (error) {
+
+                console.error(
+                    "Email magic-link exception:",
+                    error
+                );
+
+                $("msg").textContent =
+                    error?.message ||
+                    "Unable to send email link.";
+
+            } finally {
+
+                $("emailBtn").disabled =
+                    false;
+            }
+        };
 }
 
 
-/* =========================
+/* =========================================================
    PHONE OTP
-========================= */
+========================================================= */
 
-async function sendPhoneOtp() {
+if ($("phoneBtn")) {
 
-    const phone =
-        $("phone").value.trim();
+    $("phoneBtn").onclick =
+        async () => {
 
-    if (!phone) {
+            const phone =
+                $("phone").value.trim();
 
-        $("msg").textContent =
-            "Please enter your phone number.";
+            if (!phone) {
 
-        return;
-    }
+                $("msg").textContent =
+                    "Please enter your phone number.";
 
-    const button = $("phoneBtn");
+                return;
+            }
 
-    button.disabled = true;
-
-    $("msg").textContent =
-        "Sending OTP...";
-
-    try {
-
-        console.log(
-            "Sending phone OTP:",
-            phone
-        );
-
-        const result =
-            await sb.auth.signInWithOtp({
-                phone: phone
-            });
-
-        console.log(
-            "Phone OTP response:",
-            result
-        );
-
-        if (result.error) {
-
-            console.error(
-                "Phone OTP error:",
-                result.error
-            );
+            $("phoneBtn").disabled =
+                true;
 
             $("msg").textContent =
-                result.error.message;
+                "Sending OTP...";
 
-            return;
-        }
+            try {
 
-        $("msg").textContent =
-            "OTP sent. Please check your phone.";
+                const {
+                    error
+                } =
+                    await sb.auth.signInWithOtp({
+                        phone
+                    });
 
-    } catch (error) {
+                if (error) {
 
-        console.error(
-            "Phone OTP exception:",
-            error
-        );
+                    console.error(
+                        "Phone OTP error:",
+                        error
+                    );
 
-        $("msg").textContent =
-            error.message ||
-            "Unable to send OTP.";
+                    $("msg").textContent =
+                        error.message ||
+                        "Unable to send OTP.";
 
-    } finally {
+                    return;
+                }
 
-        button.disabled = false;
-    }
+                $("msg").textContent =
+                    "OTP sent.";
+
+            } catch (error) {
+
+                console.error(
+                    "Phone OTP exception:",
+                    error
+                );
+
+                $("msg").textContent =
+                    error?.message ||
+                    "Unable to send OTP.";
+
+            } finally {
+
+                $("phoneBtn").disabled =
+                    false;
+            }
+        };
 }
 
 
-/* =========================
-   CONNECT BUTTONS
-========================= */
-
-document.addEventListener(
-    "DOMContentLoaded",
-    function () {
-
-        console.log(
-            "Obsedian authentication initialized."
-        );
-
-        const passwordBtn =
-            $("passwordBtn");
-
-        const emailBtn =
-            $("emailBtn");
-
-        const phoneBtn =
-            $("phoneBtn");
-
-        const googleBtn =
-            $("google");
-
-        const githubBtn =
-            $("github");
-
-
-        if (passwordBtn) {
-            passwordBtn.addEventListener(
-                "click",
-                passwordLogin
-            );
-        }
-
-        if (emailBtn) {
-            emailBtn.addEventListener(
-                "click",
-                sendEmailLink
-            );
-        }
-
-        if (phoneBtn) {
-            phoneBtn.addEventListener(
-                "click",
-                sendPhoneOtp
-            );
-        }
-
-        if (googleBtn) {
-            googleBtn.addEventListener(
-                "click",
-                function () {
-                    oauth("google");
-                }
-            );
-        }
-
-        if (githubBtn) {
-            githubBtn.addEventListener(
-                "click",
-                function () {
-                    oauth("github");
-                }
-            );
-
-        }
-
-    }
-);
-
-/* =========================
+/* =========================================================
    LOGOUT
-========================= */
+========================================================= */
 
-$("logout").onclick = async () => {
+if ($("logout")) {
 
-    await sb.auth.signOut();
+    $("logout").onclick =
+        async () => {
 
-    session = null;
-    currentSites = [];
+            try {
 
-    paint();
-};
+                await sb.auth.signOut();
+
+            } catch (error) {
+
+                console.error(
+                    "Logout error:",
+                    error
+                );
+            }
+
+            session = null;
+            currentSites = [];
+
+            /*
+             * Make sure an old admin-login marker
+             * cannot affect a normal future login.
+             */
+
+            sessionStorage.removeItem(
+                "obsedian_admin_login"
+            );
+
+            paint();
+        };
+}
 
 
-/* =========================
+/* =========================================================
    PLAN / BILLING HELPERS
-========================= */
+========================================================= */
 
-function daysRemaining(endsAt) {
+function daysRemaining(
+    endsAt
+) {
 
-    if (!endsAt) return null;
+    if (!endsAt) {
+        return null;
+    }
 
     const ms =
-        new Date(endsAt).getTime() -
+        new Date(
+            endsAt
+        ).getTime() -
         Date.now();
 
     return Math.max(
         0,
-        Math.ceil(ms / 86400000)
+        Math.ceil(
+            ms / 86400000
+        )
     );
 }
 
 
-function isPlanExpired(sub) {
+function isPlanExpired(
+    sub
+) {
 
-    if (!sub) return false;
+    if (!sub) {
+        return false;
+    }
 
-    if (!sub.subscription_ends_at) {
+    if (
+        !sub.subscription_ends_at
+    ) {
         return false;
     }
 
     return (
-        new Date(sub.subscription_ends_at) <=
+        new Date(
+            sub.subscription_ends_at
+        ) <=
         new Date()
     );
 }
@@ -470,36 +749,47 @@ function isPlanExpired(sub) {
 
 function openUpgrade() {
 
-    const modal = $("upgradeModal");
+    const modal =
+        $("upgradeModal");
 
     if (modal) {
-        modal.classList.remove("hidden");
+        modal.classList.remove(
+            "hidden"
+        );
     }
 }
 
 
 function closeUpgrade() {
 
-    const modal = $("upgradeModal");
+    const modal =
+        $("upgradeModal");
 
     if (modal) {
-        modal.classList.add("hidden");
+        modal.classList.add(
+            "hidden"
+        );
     }
 }
 
 
-window.openUpgrade = openUpgrade;
-window.closeUpgrade = closeUpgrade;
+window.openUpgrade =
+    openUpgrade;
+
+window.closeUpgrade =
+    closeUpgrade;
 
 
-
-/* =========================
+/* =========================================================
    LOAD DASHBOARD
-========================= */
+========================================================= */
 
 async function load() {
 
-    if (!session || loading) {
+    if (
+        !session ||
+        loading
+    ) {
         return;
     }
 
@@ -507,63 +797,80 @@ async function load() {
 
     try {
 
-        const u = session.user;
+        const u =
+            session.user;
 
-        $("hello").textContent =
-            "Welcome, " +
-            (
-                u.user_metadata?.full_name ||
-                u.email ||
-                "there"
-            );
+        if ($("hello")) {
 
+            $("hello").textContent =
+                "Welcome, " +
+                (
+                    u.user_metadata?.full_name ||
+                    u.email ||
+                    "there"
+                );
+        }
 
         const [
             subR,
             siteR,
             apR
-        ] = await Promise.all([
+        ] =
+            await Promise.all([
 
-            sb
-                .from("subscriptions")
-                .select("*,plans(*)")
-                .eq("user_id", u.id)
-                .order(
-                    "created_at",
-                    {
-                        ascending: false
-                    }
-                )
-                .limit(1)
-                .maybeSingle(),
+                sb
+                    .from("subscriptions")
+                    .select("*,plans(*)")
+                    .eq(
+                        "user_id",
+                        u.id
+                    )
+                    .order(
+                        "created_at",
+                        {
+                            ascending:
+                                false
+                        }
+                    )
+                    .limit(1)
+                    .maybeSingle(),
 
-            sb
-                .from("websites")
-                .select("*")
-                .eq("user_id", u.id)
-                .order(
-                    "created_at",
-                    {
-                        ascending: false
-                    }
-                ),
+                sb
+                    .from("websites")
+                    .select("*")
+                    .eq(
+                        "user_id",
+                        u.id
+                    )
+                    .order(
+                        "created_at",
+                        {
+                            ascending:
+                                false
+                        }
+                    ),
 
-            sb
-                .from("approvals")
-                .select("*")
-                .eq("user_id", u.id)
-                .order(
-                    "created_at",
-                    {
-                        ascending: false
-                    }
-                )
-                .limit(20)
+                sb
+                    .from("approvals")
+                    .select("*")
+                    .eq(
+                        "user_id",
+                        u.id
+                    )
+                    .order(
+                        "created_at",
+                        {
+                            ascending:
+                                false
+                        }
+                    )
+                    .limit(20)
 
-        ]);
+            ]);
 
 
         if (subR.error) {
+
             console.error(
                 "Subscription error:",
                 subR.error
@@ -572,6 +879,7 @@ async function load() {
 
 
         if (siteR.error) {
+
             console.error(
                 "Website error:",
                 siteR.error
@@ -580,6 +888,7 @@ async function load() {
 
 
         if (apR.error) {
+
             console.error(
                 "Approval error:",
                 apR.error
@@ -587,83 +896,94 @@ async function load() {
         }
 
 
-        const sub = subR.data;
+        const sub =
+            subR.data;
 
         const sites =
             siteR.data || [];
 
-
-        currentSites = sites;
-
-
-        $("badge").textContent =
-            sub?.plans?.name ||
-            "Free";
+        currentSites =
+            sites;
 
 
-        $("stats").innerHTML = [
+        if ($("badge")) {
 
-            [
-                "Websites",
-                sites.length
-            ],
+            $("badge").textContent =
+                sub?.plans?.name ||
+                "Free";
+        }
 
-            [
-                "Limit",
-                sub?.plans?.max_websites ||
-                0
-            ],
 
-            [
-                "Status",
-                sub?.status ||
-                "—"
-            ],
+        if ($("stats")) {
 
-            [
-                "Ends",
-                sub?.subscription_ends_at
-                    ? new Date(
-                        sub.subscription_ends_at
-                    ).toLocaleDateString()
-                    : "—"
+            $("stats").innerHTML = [
+
+                [
+                    "Websites",
+                    sites.length
+                ],
+
+                [
+                    "Limit",
+                    sub?.plans?.max_websites ||
+                    0
+                ],
+
+                [
+                    "Status",
+                    sub?.status ||
+                    "—"
+                ],
+
+                [
+                    "Ends",
+                    sub?.subscription_ends_at
+                        ? new Date(
+                            sub.subscription_ends_at
+                        ).toLocaleDateString()
+                        : "—"
+                ]
+
             ]
+            .map(
+                x =>
+                    `<div class="stat">
+                        <small>${x[0]}</small><br>
+                        <b>${x[1]}</b>
+                    </div>`
+            )
+            .join("");
+        }
 
-        ]
-        .map(
-            x =>
-                `<div class="stat">
-                    <small>${esc(x[0])}</small><br>
-                    <b>${esc(x[1])}</b>
-                </div>`
-        )
-        .join("");
 
+        if ($("sites")) {
 
-        $("sites").innerHTML =
-            sites
-                .map(
-                    s =>
-                        `<div class="item">
-                            <b>${esc(s.name || s.url)}</b><br>
-                            <small>${esc(s.url)}</small>
-                        </div>`
-                )
-                .join("")
-            ||
-            "<p>No websites yet.</p>";
+            $("sites").innerHTML =
+                sites
+                    .map(
+                        s =>
+                            `<div class="item">
+                                <b>${s.name || s.url}</b><br>
+                                <small>
+                                    ${s.url} · ${s.status}
+                                </small>
+                            </div>`
+                    )
+                    .join("")
+
+                ||
+                "<p>No websites yet.</p>";
+        }
 
 
         const planName =
             sub?.plans?.name ||
             "Free";
 
-
         const remainingDays =
             daysRemaining(
                 sub?.subscription_ends_at
             );
-
 
         const expired =
             isPlanExpired(sub) ||
@@ -671,1320 +991,296 @@ async function load() {
             sub?.status === "expired";
 
 
-        $("billing").innerHTML = sub
+        if ($("billing")) {
 
-            ? `
-                <div class="billing-summary">
+            $("billing").innerHTML =
+                sub
+                    ? `
+                        <div class="billing-summary">
 
-                    <div>
+                            <div>
 
-                        <strong>
-                            ${esc(planName)}
-                        </strong>
+                                <strong>
+                                    ${planName}
+                                </strong>
 
-                        <span
-                            class="billing-status ${
-                                expired
-                                    ? "expired"
-                                    : "active"
-                            }"
-                        >
-                            ${
-                                expired
-                                    ? "Expired / Paused"
-                                    : esc(sub.status)
-                            }
-                        </span>
-
-                    </div>
-
-
-                    <p>
-
-                        ${
-                            sub.plans?.max_websites ||
-                            0
-                        }
-
-                        website${
-                            (
-                                sub.plans?.max_websites ||
-                                0
-                            ) === 1
-                                ? ""
-                                : "s"
-                        }
-
-                        · ends
-
-                        ${
-                            sub.subscription_ends_at
-                                ? new Date(
-                                    sub.subscription_ends_at
-                                ).toLocaleDateString()
-                                : "—"
-                        }
-
-                    </p>
-
-
-                    ${
-                        planName === "Free" &&
-                        !expired
-
-                            ? `
-                                <div class="trial-box">
-
-                                    <b>
-                                        ${
-                                            remainingDays
-                                        }
-                                        days remaining
-                                    </b>
-
-                                    <span>
-                                        Free plan ·
-                                        45-day trial
-                                    </span>
-
-                                </div>
-                            `
-
-                            : ""
-                    }
-
-
-                    ${
-                        planName === "Free" ||
-                        expired
-
-                            ? `
-                                <button
-                                    class="upgrade-btn"
-                                    type="button"
-                                    onclick="openUpgrade()"
+                                <span
+                                    class="billing-status ${
+                                        expired
+                                            ? "expired"
+                                            : "active"
+                                    }"
                                 >
-                                    Upgrade Plan
-                                </button>
-                            `
+                                    ${
+                                        expired
+                                            ? "Expired / Paused"
+                                            : sub.status
+                                    }
+                                </span>
 
-                            : ""
-                    }
+                            </div>
 
-                </div>
-            `
+                            <p>
+                                ${
+                                    sub.plans?.max_websites ||
+                                    0
+                                }
+                                website${
+                                    (
+                                        sub.plans?.max_websites ||
+                                        0
+                                    ) === 1
+                                        ? ""
+                                        : "s"
+                                }
 
-            : `
-                <div class="billing-summary">
+                                · ends
 
-                    <p>
-                        No active plan found.
-                    </p>
+                                ${
+                                    sub.subscription_ends_at
+                                        ? new Date(
+                                            sub.subscription_ends_at
+                                        ).toLocaleDateString()
+                                        : "—"
+                                }
 
-                    <button
-                        class="upgrade-btn"
-                        type="button"
-                        onclick="openUpgrade()"
-                    >
-                        Choose a Plan
-                    </button>
+                            </p>
 
-                </div>
-            `;
+                            ${
+                                planName === "Free" &&
+                                !expired
+                                    ? `
+                                        <div class="trial-box">
+
+                                            <b>
+                                                ${remainingDays}
+                                                days remaining
+                                            </b>
+
+                                            <span>
+                                                Free plan ·
+                                                45-day trial
+                                            </span>
+
+                                        </div>
+                                    `
+                                    : ""
+                            }
+
+                            ${
+                                planName === "Free" ||
+                                expired
+                                    ? `
+                                        <button
+                                            class="upgrade-btn"
+                                            type="button"
+                                            onclick="openUpgrade()"
+                                        >
+                                            Upgrade Plan
+                                        </button>
+                                    `
+                                    : ""
+                            }
+
+                        </div>
+                    `
+                    :
+                    `
+                        <div class="billing-summary">
+
+                            <p>
+                                No active plan found.
+                            </p>
+
+                            <button
+                                class="upgrade-btn"
+                                type="button"
+                                onclick="openUpgrade()"
+                            >
+                                Choose a Plan
+                            </button>
+
+                        </div>
+                    `;
+        }
 
 
-        /* =========================
-           APPROVAL QUEUE
-        ========================= */
-
-        const approvalItems =
-            apR.data || [];
-
-
-        if (apR.error) {
-
-            console.error(
-                "Approval Queue error:",
-                apR.error
-            );
-
-
-            $("approvals").innerHTML = `
-                <div class="report-error">
-
-                    <strong>
-                        Could not load Approval Queue
-                    </strong>
-
-                    <div>
-                        ${esc(
-                            apR.error.message ||
-                            "Unknown database error"
-                        )}
-                    </div>
-
-                </div>
-            `;
-
-
-        } else if (!approvalItems.length) {
-
-            $("approvals").innerHTML = `
-                <div class="report-empty">
-                    No pending approvals.
-                </div>
-            `;
-
-
-        } else {
+        if ($("approvals")) {
 
             $("approvals").innerHTML =
 
-                approvalItems
+                (apR.data || [])
                     .map(
-                        item => {
+                        a =>
+                            `<div class="item">
 
-                            return `
-                                <div
-                                    class="approval-item"
-                                >
+                                <b>
+                                    ${a.title}
+                                </b>
 
-                                    <div
-                                        class="approval-main"
-                                    >
+                                <br>
 
-                                        <strong>
-                                            ${esc(
-                                                item.title ||
-                                                "Pending approval"
-                                            )}
-                                        </strong>
+                                ${a.description || ""}
 
+                                <br>
 
-                                        <div
-                                            class="approval-description"
-                                        >
-                                            ${esc(
-                                                item.description ||
-                                                item.content ||
-                                                "No description available."
-                                            )}
-                                        </div>
+                                <small>
+                                    ${a.status}
+                                    ·
+                                    ${a.risk_level}
+                                </small>
 
+                                ${
+                                    a.status === "pending"
+                                        ? `
 
-                                        <small>
+                                            <button
+                                                onclick="approve('${a.id}')"
+                                            >
+                                                Approve
+                                            </button>
 
-                                            ${esc(
-                                                item.category ||
-                                                "General"
-                                            )}
+                                            <button
+                                                onclick="reject('${a.id}')"
+                                            >
+                                                Reject
+                                            </button>
 
-                                            ·
+                                        `
+                                        : ""
+                                }
 
-                                            ${esc(
-                                                item.priority ||
-                                                "normal"
-                                            )}
-
-                                        </small>
-
-                                    </div>
-
-
-                                    <div
-                                        class="approval-actions"
-                                    >
-
-                                        <button
-                                            class="approve-btn"
-                                            type="button"
-                                            data-id="${esc(item.id)}"
-                                            onclick="approve('${esc(item.id)}')"
-                                        >
-                                            Approve
-                                        </button>
-
-
-                                        <button
-                                            class="reject-btn"
-                                            type="button"
-                                            data-id="${esc(item.id)}"
-                                            onclick="reject('${esc(item.id)}')"
-                                        >
-                                            Reject
-                                        </button>
-
-                                    </div>
-
-                                </div>
-                            `;
-                        }
+                            </div>`
                     )
                     .join("")
 
                 ||
-
                 "<p>No pending approvals.</p>";
-        }
+    }
 
-
-    } catch (error) {
+    catch (error) {
 
         console.error(
             "Dashboard load error:",
             error
         );
 
+    }
 
-        if ($("approvals")) {
-
-            $("approvals").innerHTML = `
-                <div class="report-error">
-
-                    <strong>
-                        Dashboard loading error
-                    </strong>
-
-                    <div>
-                        ${esc(
-                            error.message ||
-                            "Unknown error"
-                        )}
-                    </div>
-
-                </div>
-            `;
-        }
-
-
-    } finally {
+    finally {
 
         loading = false;
-
-        if (
-            typeof setLoading ===
-            "function"
-        ) {
-            setLoading(false);
-        }
     }
 }
 
-/* =========================
+
+/* =========================================================
    ADD WEBSITE
-========================= */
+========================================================= */
 
-$("add").onclick = async () => {
+if ($("add")) {
 
-    if (!session) {
+    $("add").onclick =
+        async () => {
 
-        alert(
-            "Please sign in first."
-        );
+            if (!session) {
 
-        return;
-    }
+                alert(
+                    "Please sign in first."
+                );
 
-
-    const url =
-        $("url").value.trim();
-
-    const name =
-        $("name").value.trim();
-
-
-    if (!url) {
-
-        alert(
-            "Please enter a website URL."
-        );
-
-        return;
-    }
-
-
-    let normalizedUrl;
-
-
-    try {
-
-        normalizedUrl =
-            new URL(url).origin;
-
-    } catch {
-
-        alert(
-            "Please enter a valid URL, for example https://example.com"
-        );
-
-        return;
-    }
-
-
-    const { error } =
-        await sb
-            .from("websites")
-            .insert({
-
-                user_id:
-                    session.user.id,
-
-                url,
-
-                normalized_url:
-                    normalizedUrl,
-
-                name,
-
-                status:
-                    "pending",
-
-                next_crawl_at:
-                    new Date().toISOString()
-
-            });
-
-
-    if (error) {
-
-        alert(error.message);
-
-    } else {
-
-        $("url").value = "";
-
-        $("name").value = "";
-
-        await load();
-    }
-};
-
-
-/* =========================
-   AI REPORT HELPERS
-========================= */
-
-function esc(value) {
-
-    return String(value ?? "")
-        .replace(
-            /&/g,
-            "&amp;"
-        )
-        .replace(
-            /</g,
-            "&lt;"
-        )
-        .replace(
-            />/g,
-            "&gt;"
-        )
-        .replace(
-            /"/g,
-            "&quot;"
-        )
-        .replace(
-            /'/g,
-            "&#039;"
-        );
-}
-
-
-function severityClass(value) {
-
-    return `report-${String(
-        value || "info"
-    ).toLowerCase()}`;
-}
-
-
-function renderList(
-    items,
-    empty = "No items found."
-) {
-
-    if (
-        !Array.isArray(items) ||
-        !items.length
-    ) {
-
-        return `
-            <div class="report-empty">
-                ${esc(empty)}
-            </div>
-        `;
-    }
-
-
-    return `
-        <div class="report-list">
-
-            ${
-                items
-                    .map(
-                        (
-                            item,
-                            index
-                        ) => {
-
-                            if (
-                                typeof item ===
-                                "string"
-                            ) {
-
-                                return `
-                                    <div class="report-row">
-
-                                        <span
-                                            class="report-index"
-                                        >
-                                            ${index + 1}
-                                        </span>
-
-                                        <div>
-                                            ${esc(item)}
-                                        </div>
-
-                                    </div>
-                                `;
-                            }
-
-
-                            const severity =
-                                item.severity ||
-                                item.priority ||
-                                item.impact ||
-                                "info";
-
-
-                            const title =
-                                item.title ||
-                                item.name ||
-                                item.action ||
-                                item.issue ||
-                                "Recommendation";
-
-
-                            const description =
-                                item.description ||
-                                item.details ||
-                                item.reason ||
-                                item.evidence ||
-                                "";
-
-
-                            return `
-                                <div class="report-row">
-
-                                    <span
-                                        class="report-index"
-                                    >
-                                        ${index + 1}
-                                    </span>
-
-                                    <div>
-
-                                        <div
-                                            class="report-row-title"
-                                        >
-
-                                            ${esc(title)}
-
-                                            <span
-                                                class="report-badge ${severityClass(
-                                                    severity
-                                                )}"
-                                            >
-                                                ${esc(
-                                                    severity
-                                                )}
-                                            </span>
-
-                                        </div>
-
-                                        ${
-                                            description
-                                                ? `
-                                                    <div
-                                                        class="report-muted"
-                                                    >
-                                                        ${esc(
-                                                            description
-                                                        )}
-                                                    </div>
-                                                `
-                                                : ""
-                                        }
-
-                                    </div>
-
-                                </div>
-                            `;
-                        }
-                    )
-                    .join("")
+                return;
             }
 
-        </div>
-    `;
+            const url =
+                $("url").value.trim();
+
+            const name =
+                $("name").value.trim();
+
+            if (!url) {
+
+                alert(
+                    "Please enter a website URL."
+                );
+
+                return;
+            }
+
+            let normalizedUrl;
+
+            try {
+
+                normalizedUrl =
+                    new URL(
+                        url
+                    ).origin;
+
+            } catch {
+
+                alert(
+                    "Please enter a valid URL, for example https://example.com"
+                );
+
+                return;
+            }
+
+
+            const {
+                error
+            } =
+                await sb
+                    .from("websites")
+                    .insert({
+
+                        user_id:
+                            session.user.id,
+
+                        url,
+
+                        normalized_url:
+                            normalizedUrl,
+
+                        name,
+
+                        status:
+                            "pending",
+
+                        next_crawl_at:
+                            new Date()
+                                .toISOString()
+
+                    });
+
+
+            if (error) {
+
+                alert(
+                    error.message
+                );
+
+            } else {
+
+                $("url").value =
+                    "";
+
+                $("name").value =
+                    "";
+
+                await load();
+            }
+        };
 }
 
 
-function renderMetric(
-    label,
-    value,
-    state = ""
-) {
-
-    return `
-        <div
-            class="report-metric ${
-                state
-                    ? `metric-${state}`
-                    : ""
-            }"
-        >
-
-            <small>
-                ${esc(label)}
-            </small>
-
-            <strong>
-                ${esc(value)}
-            </strong>
-
-        </div>
-    `;
-}
-
-
-/* =========================
-   AUDIT REPORT
-========================= */
-
-function renderAuditReport(data) {
-
-    const audit =
-        data?.audit ||
-        {};
-
-    const crawl =
-        data?.crawl ||
-        {};
-
-    const summary =
-        audit?.summary ||
-        {};
-
-    const metrics =
-        audit?.detailed_metrics ||
-        {};
-
-    const technical =
-        audit?.technical_seo ||
-        [];
-
-    const onPage =
-        audit?.on_page_seo ||
-        [];
-
-    const content =
-        audit?.content ||
-        [];
-
-    const actions =
-        audit?.prioritized_actions ||
-        [];
-
-    const url =
-        data?.url ||
-        currentSites[0]?.url ||
-        "";
-
-    const score =
-        Number(data?.score ?? 0);
-
-    const criticalIssues =
-        summary?.critical_issues ||
-        [];
-
-    const warnings =
-        summary?.warnings ||
-        [];
-
-    const positiveSignals =
-        summary?.positive_signals ||
-        [];
-
-
-    const totalIssues =
-        criticalIssues.length +
-        warnings.length;
-
-
-    $("out").innerHTML = `
-
-        <div class="report">
-
-            <div class="report-hero">
-
-                <div>
-
-                    <div class="report-kicker">
-                        SEO AUDIT ·
-                        RULE-BASED ENGINE
-                    </div>
-
-                    <h2>
-                        Website SEO Audit
-                    </h2>
-
-                    <div class="report-url">
-                        ${esc(url)}
-                    </div>
-
-                </div>
-
-
-                <div class="score-ring">
-
-                    <strong>
-                        ${esc(score)}
-                    </strong>
-
-                    <span>
-                        / 100
-                    </span>
-
-                </div>
-
-            </div>
-
-
-            <div class="report-metrics">
-
-                ${renderMetric(
-                    "Pages crawled",
-                    crawl?.pages_crawled ??
-                    crawl?.pages ??
-                    1
-                )}
-
-                ${renderMetric(
-                    "Issues found",
-                    totalIssues,
-                    totalIssues
-                        ? "bad"
-                        : "good"
-                )}
-
-                ${renderMetric(
-                    "Response time",
-                    crawl?.response_time_ms != null
-                        ? `${crawl.response_time_ms} ms`
-                        : "—"
-                )}
-
-                ${renderMetric(
-                    "HTTP status",
-                    crawl?.homepage_status ??
-                    "—"
-                )}
-
-            </div>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Overall observations
-                </h3>
-
-                ${
-                    renderList(
-                        summary?.overall_observations ||
-                        [],
-                        "No observations available."
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Critical issues
-                </h3>
-
-                ${
-                    renderList(
-                        criticalIssues,
-                        "No critical issues detected."
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Warnings
-                </h3>
-
-                ${
-                    renderList(
-                        warnings,
-                        "No warnings detected."
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Technical SEO
-                </h3>
-
-                ${
-                    renderList(
-                        technical,
-                        "No technical SEO findings."
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    On-Page SEO
-                </h3>
-
-                ${
-                    renderList(
-                        onPage,
-                        "No on-page SEO findings."
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Content
-                </h3>
-
-                ${
-                    renderList(
-                        content,
-                        "No content findings."
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Priority Actions
-                </h3>
-
-                ${
-                    renderList(
-                        actions,
-                        "No priority actions generated."
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Positive Signals
-                </h3>
-
-                ${
-                    renderList(
-                        positiveSignals,
-                        "No positive signals recorded."
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Detailed Metrics
-                </h3>
-
-                <div class="report-detail-grid">
-
-                    ${renderMetric(
-                        "Title",
-                        metrics.title ||
-                        "Missing"
-                    )}
-
-                    ${renderMetric(
-                        "Title length",
-                        metrics.title_length ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "Meta description",
-                        metrics.meta_description
-                            ? "Present"
-                            : "Missing"
-                    )}
-
-                    ${renderMetric(
-                        "Meta length",
-                        metrics.meta_description_length ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "H1 count",
-                        metrics.h1_count ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "H2 count",
-                        metrics.h2_count ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "H3 count",
-                        metrics.h3_count ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "Images",
-                        metrics.image_count ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "Missing ALT",
-                        metrics.images_missing_alt ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "Internal links",
-                        metrics.internal_links ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "Word count",
-                        metrics.word_count ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "HTTPS",
-                        metrics.https
-                            ? "Yes"
-                            : "No"
-                    )}
-
-                    ${renderMetric(
-                        "Viewport",
-                        metrics.viewport
-                            ? "Yes"
-                            : "No"
-                    )}
-
-                    ${renderMetric(
-                        "Charset",
-                        metrics.charset
-                            ? "Yes"
-                            : "No"
-                    )}
-
-                    ${renderMetric(
-                        "Noindex",
-                        metrics.noindex
-                            ? "Yes"
-                            : "No"
-                    )}
-
-                    ${renderMetric(
-                        "JSON-LD blocks",
-                        metrics.structured_data_blocks ??
-                        0
-                    )}
-
-                    ${renderMetric(
-                        "robots.txt",
-                        metrics.robots_exists
-                            ? "Found"
-                            : "Missing"
-                    )}
-
-                    ${renderMetric(
-                        "sitemap.xml",
-                        metrics.sitemap_exists
-                            ? "Found"
-                            : "Missing"
-                    )}
-
-                </div>
-
-            </section>
-
-        </div>
-
-    `;
-}
-
-
-/* =========================
-   STRATEGY REPORT
-========================= */
-
-function renderStrategyReport(data) {
-
-    const audit =
-        data?.audit ||
-        {};
-
-    const strategy =
-        audit?.strategy ||
-        {};
-
-    const url =
-        data?.url ||
-        currentSites[0]?.url ||
-        "";
-
-
-    $("out").innerHTML = `
-
-        <div class="report">
-
-            <div class="report-hero">
-
-                <div>
-
-                    <div class="report-kicker">
-                        YOUR URL SUBMITTED TO 25+ AI-AGENTS
-                    </div>
-
-                    <h2>
-                        Your SEO Strategy Created & Submitted to AI Engines
-                    </h2>
-
-                    <div class="report-url">
-                        ${esc(url)}
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Current Situation
-                </h3>
-
-                ${
-                    renderList(
-                        strategy.current_situation ||
-                        []
-                    )
-                }
-
-            </section>
-
-
-            <div class="report-columns">
-
-                <div>
-
-                    <section class="report-section">
-
-                        <h3>
-                            Days 1–30
-                        </h3>
-
-                        ${
-                            renderList(
-                                strategy.days_30 ||
-                                []
-                            )
-                        }
-
-                    </section>
-
-                </div>
-
-
-                <div>
-
-                    <section class="report-section">
-
-                        <h3>
-                            Days 31–60
-                        </h3>
-
-                        ${
-                            renderList(
-                                strategy.days_60 ||
-                                []
-                            )
-                        }
-
-                    </section>
-
-                </div>
-
-
-                <div>
-
-                    <section class="report-section">
-
-                        <h3>
-                            Days 61–90
-                        </h3>
-
-                        ${
-                            renderList(
-                                strategy.days_90 ||
-                                []
-                            )
-                        }
-
-                    </section>
-
-                </div>
-
-            </div>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Content Strategy
-                </h3>
-
-                ${
-                    renderList(
-                        strategy.content_strategy ||
-                        []
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Priority Actions
-                </h3>
-
-                ${
-                    renderList(
-                        strategy.priority_actions ||
-                        []
-                    )
-                }
-
-            </section>
-
-        </div>
-
-    `;
-}
-
-
-/* =========================
-   WEEKLY REPORT
-========================= */
-
-function renderWeeklyReport(data) {
-
-    const audit =
-        data?.audit ||
-        {};
-
-    const weekly =
-        audit?.weekly_report ||
-        {};
-
-    const url =
-        data?.url ||
-        currentSites[0]?.url ||
-        "";
-
-
-    $("out").innerHTML = `
-
-        <div class="report">
-
-            <div class="report-hero">
-
-                <div>
-
-                    <div class="report-kicker">
-                        WEEKLY REPORT ·
-                        RULE-BASED ENGINE
-                    </div>
-
-                    <h2>
-                        Weekly SEO Health Report
-                    </h2>
-
-                    <div class="report-url">
-                        ${esc(url)}
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            <div class="report-metrics">
-
-                ${renderMetric(
-                    "HTTP status",
-                    weekly.http_status ??
-                    "—"
-                )}
-
-                ${renderMetric(
-                    "Response time",
-                    weekly.response_time_ms != null
-                        ? `${weekly.response_time_ms} ms`
-                        : "—"
-                )}
-
-                ${renderMetric(
-                    "Open issues",
-                    weekly.open_issues ??
-                    0
-                )}
-
-                ${renderMetric(
-                    "Health",
-                    weekly.current_health?.[0] ||
-                    "Available"
-                )}
-
-            </div>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Current Health
-                </h3>
-
-                ${
-                    renderList(
-                        weekly.current_health ||
-                        []
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Issues to Watch
-                </h3>
-
-                ${
-                    renderList(
-                        weekly.issues_to_watch ||
-                        [],
-                        "No issues currently identified."
-                    )
-                }
-
-            </section>
-
-
-            <section class="report-section">
-
-                <h3>
-                    Next Actions
-                </h3>
-
-                ${
-                    renderList(
-                        weekly.next_actions ||
-                        [],
-                        "No immediate actions identified."
-                    )
-                }
-
-            </section>
-
-        </div>
-
-    `;
-}
-
-/* =========================
-   REPORT ROUTER
-========================= */
-
-function renderAgentReport(
-    agentName,
-    data
-) {
-
-    if (
-        agentName ===
-        "seo_auditor"
-    ) {
-
-        renderAuditReport(data);
-
-    } else if (
-        agentName ===
-        "seo_strategist"
-    ) {
-
-        renderStrategyReport(data);
-
-    } else {
-
-        renderWeeklyReport(data);
-    }
-}
-
-
-/* =========================
+/* =========================================================
    AI AGENTS
-========================= */
+========================================================= */
 
 async function agent(
-    agentName,
-    task = ""
+    agent,
+    task,
+    provider = "gemini"
 ) {
 
     if (!currentSites[0]) {
@@ -1996,29 +1292,11 @@ async function agent(
         return;
     }
 
+    if ($("out")) {
 
-    $("out").innerHTML = `
-
-        <div class="report-loading">
-
-            <div class="loader"></div>
-
-            <strong>
-                Analyzing
-                ${esc(
-                    currentSites[0].url
-                )}…
-            </strong>
-
-            <span>
-                Running the rule-based SEO
-                engine and preparing your report.
-            </span>
-
-        </div>
-
-    `;
-
+        $("out").textContent =
+            "AI agent running…";
+    }
 
     try {
 
@@ -2033,15 +1311,18 @@ async function agent(
 
         if (!currentSession) {
 
-            $("out").innerHTML = `
+            if ($("out")) {
 
-                <div class="report-error">
-
-                    You are not logged in.
-
-                </div>
-
-            `;
+                $("out").textContent =
+                    JSON.stringify(
+                        {
+                            error:
+                                "You are not logged in."
+                        },
+                        null,
+                        2
+                    );
+            }
 
             return;
         }
@@ -2051,28 +1332,28 @@ async function agent(
             await fetch(
                 "/api/ai",
                 {
-                    method: "POST",
+                    method:
+                        "POST",
 
                     headers: {
 
                         "Authorization":
-                            `Bearer ${currentSession.access_token}`,
+                            `Bearer ${
+                                currentSession.access_token
+                            }`,
 
                         "Content-Type":
                             "application/json"
-
                     },
 
                     body:
                         JSON.stringify({
 
-                            agent:
-                                agentName,
+                            agent,
 
                             task,
 
-                            provider:
-                                "rule_based",
+                            provider,
 
                             website_id:
                                 currentSites[0].id,
@@ -2089,12 +1370,18 @@ async function agent(
             );
 
 
+        /*
+         * Read as TEXT first.
+         *
+         * This prevents JSON parsing errors when
+         * Cloudflare/Supabase returns an HTML error.
+         */
+
         const responseText =
             await response.text();
 
 
         let data;
-
 
         try {
 
@@ -2123,52 +1410,21 @@ async function agent(
         }
 
 
-        if (
-            !response.ok ||
-            data?.error
-        ) {
+        if ($("out")) {
 
-            $("out").innerHTML = `
-
-                <div class="report-error">
-
-                    <strong>
-                        ${
-                            esc(
-                                data?.error ||
-                                "Report generation failed"
-                            )
-                        }
-                    </strong>
-
-                    ${
-                        data?.details
-                            ? `
-                                <div>
-                                    ${esc(
-                                        data.details
-                                    )}
-                                </div>
-                            `
-                            : ""
-                    }
-
-                </div>
-
-            `;
-
-            return;
+            $("out").textContent =
+                JSON.stringify(
+                    data,
+                    null,
+                    2
+                );
         }
 
 
-        renderAgentReport(
-            agentName,
-            data
-        );
+        if (response.ok) {
 
-
-        await load();
-
+            await load();
+        }
 
     } catch (error) {
 
@@ -2177,84 +1433,244 @@ async function agent(
             error
         );
 
+        if ($("out")) {
 
-        $("out").innerHTML = `
+            $("out").textContent =
+                JSON.stringify(
+                    {
+                        error:
+                            "AI request failed",
 
-            <div class="report-error">
+                        details:
+                            error?.message ||
+                            String(error)
 
-                <strong>
-                    Report request failed
-                </strong>
-
-                <div>
-                    ${esc(
-                        error?.message ||
-                        String(error)
-                    )}
-                </div>
-
-            </div>
-
-        `;
+                    },
+                    null,
+                    2
+                );
+        }
     }
 }
 
 
-/* =========================
+/* =========================================================
    AI BUTTONS
-========================= */
+========================================================= */
 
-$("audit").onclick = () =>
-    agent(
-        "seo_auditor",
-        "Run the complete rule-based SEO audit."
-    );
+if ($("audit")) {
 
+    $("audit").onclick =
+        () =>
+            agent(
+                "seo_auditor",
 
-$("strategy").onclick = () =>
-    agent(
-        "seo_strategist",
-        "Generate a 30/60/90 day SEO strategy from current crawl evidence."
-    );
+                "Audit technical SEO, on-page SEO, content quality and observable performance. Return evidence-backed prioritized recommendations.",
 
-
-$("report").onclick = () =>
-    agent(
-        "weekly_report",
-        "Generate a weekly SEO health report from current crawl evidence."
-    );
+                "gemini"
+            );
+}
 
 
-/* =========================
+if ($("strategy")) {
+
+    $("strategy").onclick =
+        () =>
+            agent(
+                "seo_strategist",
+
+                "Create a 30-day SEO strategy with keyword themes, page opportunities, internal linking and content briefs. Mark assumptions.",
+
+                "gemini"
+            );
+}
+
+
+if ($("report")) {
+
+    $("report").onclick =
+        () =>
+            agent(
+                "executive_report",
+
+                "Create a weekly executive report template based on currently available website signals. Never invent traffic or rankings.",
+
+                "gemini"
+            );
+}
+
+
+/* =========================================================
    BILLING
-========================= */
+========================================================= */
 
-// Paid checkout buttons are handled
-// by the Upgrade Modal below.
-
-
-/* =========================
-   UPGRADE MODAL
-========================= */
+/*
+ * Paid checkout buttons are handled by the Upgrade Modal.
+ */
 
 document
     .querySelectorAll(
         "#upgradeModal [data-plan]"
     )
-    .forEach(button => {
+    .forEach(
+        button => {
 
-        button.onclick = async () => {
+            button.onclick =
+                async () => {
 
-            const {
-                data: {
-                    session:
-                        currentSession
+                    const {
+                        data: {
+                            session:
+                                currentSession
+                        }
+                    } =
+                        await sb.auth.getSession();
+
+
+                    if (!currentSession) {
+
+                        alert(
+                            "Please sign in first."
+                        );
+
+                        return;
+                    }
+
+
+                    const plan =
+                        button.dataset.plan;
+
+                    const billingCycle =
+                        button.dataset.billing ||
+                        "monthly";
+
+
+                    button.disabled =
+                        true;
+
+                    button.textContent =
+                        "Opening checkout…";
+
+
+                    try {
+
+                        const response =
+                            await fetch(
+                                "/api/checkout",
+                                {
+                                    method:
+                                        "POST",
+
+                                    headers: {
+
+                                        Authorization:
+                                            `Bearer ${
+                                                currentSession.access_token
+                                            }`,
+
+                                        "Content-Type":
+                                            "application/json"
+                                    },
+
+                                    body:
+                                        JSON.stringify({
+
+                                            plan,
+
+                                            billing_cycle:
+                                                billingCycle
+
+                                        })
+                                }
+                            );
+
+
+                        const data =
+                            await response.json();
+
+
+                        if (
+                            data?.checkout_url
+                        ) {
+
+                            window.location.href =
+                                data.checkout_url;
+
+                            return;
+                        }
+
+
+                        alert(
+                            data?.message ||
+                            "Checkout is not configured yet. Connect the Razorpay checkout endpoint before accepting payments."
+                        );
+
+                    } catch (error) {
+
+                        console.error(
+                            "Checkout error:",
+                            error
+                        );
+
+                        alert(
+                            error?.message ||
+                            "Could not start checkout."
+                        );
+
+                    } finally {
+
+                        button.disabled =
+                            false;
+
+                        button.textContent =
+                            billingCycle === "yearly"
+                                ? "Choose yearly"
+                                : "Choose monthly";
+                    }
+                };
+        }
+    );
+
+
+if ($("upgradeClose")) {
+
+    $("upgradeClose")
+        .addEventListener(
+            "click",
+            closeUpgrade
+        );
+}
+
+
+if ($("upgradeModal")) {
+
+    $("upgradeModal")
+        .addEventListener(
+            "click",
+            event => {
+
+                if (
+                    event.target.id ===
+                    "upgradeModal"
+                ) {
+
+                    closeUpgrade();
                 }
-            } =
-                await sb.auth.getSession();
+            }
+        );
+}
 
 
-            if (!currentSession) {
+/* =========================================================
+   SUPPORT
+========================================================= */
+
+if ($("ticket")) {
+
+    $("ticket").onclick =
+        async () => {
+
+            if (!session) {
 
                 alert(
                     "Please sign in first."
@@ -2264,197 +1680,41 @@ document
             }
 
 
-            const plan =
-                button.dataset.plan;
+            const {
+                error
+            } =
+                await sb
+                    .from(
+                        "support_tickets"
+                    )
+                    .insert({
 
+                        user_id:
+                            session.user.id,
 
-            const billingCycle =
-                button.dataset.billing ||
-                "monthly";
+                        subject:
+                            $("subject").value,
 
+                        message:
+                            $("support").value
 
-            button.disabled = true;
+                    });
 
-
-            button.textContent =
-                "Opening checkout…";
-
-
-            try {
-
-                const response =
-                    await fetch(
-                        "/api/checkout",
-                        {
-                            method: "POST",
-
-                            headers: {
-
-                                Authorization:
-                                    `Bearer ${currentSession.access_token}`,
-
-                                "Content-Type":
-                                    "application/json"
-
-                            },
-
-                            body:
-                                JSON.stringify({
-
-                                    plan,
-
-                                    billing_cycle:
-                                        billingCycle
-
-                                })
-                        }
-                    );
-
-
-                const data =
-                    await response.json();
-
-
-               if (
-    data?.success &&
-    data?.order_id &&
-    data?.key_id
-) {
-
-    const options = {
-
-        key:
-            data.key_id,
-
-        amount:
-            data.amount,
-
-        currency:
-            data.currency || "INR",
-
-        name:
-            "Obsedian.Space",
-
-        description:
-            `${plan.toUpperCase()} Plan - ${billingCycle}`,
-
-        order_id:
-            data.order_id,
-
-        prefill: {
-            email:
-                data.customer?.email || ""
-        },
-
-        theme: {
-            color:
-                "#6d28d9"
-        },
-
-        modal: {
-            ondismiss: () => {
-                button.disabled = false;
-
-                button.textContent =
-                    billingCycle === "yearly"
-                        ? "Choose yearly"
-                        : "Choose monthly";
-            }
-        },
-
-        handler: function (response) {
-
-            /*
-             * Razorpay payment response is
-             * intentionally not trusted as the
-             * final activation signal.
-             *
-             * Webhook will activate the plan.
-             */
 
             alert(
-                "Payment received. Your plan will be activated after payment verification."
+                error?.message ||
+                "Ticket created"
             );
-
-            closeUpgrade();
-
-            setTimeout(
-                () => load(),
-                1500
-            );
-        }
-    };
-
-    const razorpay =
-        new Razorpay(options);
-
-    razorpay.open();
-
-    return;
+        };
 }
 
 
-                alert(
-                    data?.message ||
-                    "Checkout is not configured yet. Connect the Razorpay checkout endpoint before accepting payments."
-                );
+/* =========================================================
+   APPROVALS
+========================================================= */
 
-
-            } catch (error) {
-
-                alert(
-                    error?.message ||
-                    "Could not start checkout."
-                );
-
-
-            } finally {
-
-                button.disabled =
-                    false;
-
-
-                button.textContent =
-                    billingCycle ===
-                    "yearly"
-
-                        ? "Choose yearly"
-
-                        : "Choose monthly";
-            }
-        };
-    });
-
-
-$("upgradeClose")
-    ?.addEventListener(
-        "click",
-        closeUpgrade
-    );
-
-
-$("upgradeModal")
-    ?.addEventListener(
-        "click",
-        event => {
-
-            if (
-                event.target.id ===
-                "upgradeModal"
-            ) {
-
-                closeUpgrade();
-            }
-        }
-    );
-
-
-/* =========================
-   SUPPORT
-========================= */
-
-$("ticket").onclick =
-    async () => {
+window.approve =
+    async id => {
 
         if (!session) {
 
@@ -2468,57 +1728,42 @@ $("ticket").onclick =
 
         const {
             error
-        } = await sb
-            .from(
-                "support_tickets"
-            )
-            .insert({
+        } =
+            await sb
+                .from("approvals")
+                .update({
 
-                user_id:
-                    session.user.id,
+                    status:
+                        "approved",
 
-                subject:
-                    $("subject").value,
+                    approved_at:
+                        new Date()
+                            .toISOString()
 
-                message:
-                    $("support").value
-
-            });
-
-
-        alert(
-            error?.message ||
-            "Ticket created"
-        );
-    };
+                })
+                .eq(
+                    "id",
+                    id
+                )
+                .eq(
+                    "user_id",
+                    session.user.id
+                );
 
 
-/* =========================
-   APPROVALS
-========================= */
+        if (error) {
 
-window.approve =
-    async id => {
-
-        await sb
-            .from("approvals")
-            .update({
-
-                status:
-                    "approved",
-
-                approved_at:
-                    new Date().toISOString()
-
-            })
-            .eq(
-                "id",
-                id
-            )
-            .eq(
-                "user_id",
-                session.user.id
+            console.error(
+                "Approval update error:",
+                error
             );
+
+            alert(
+                error.message
+            );
+
+            return;
+        }
 
 
         await load();
@@ -2528,30 +1773,58 @@ window.approve =
 window.reject =
     async id => {
 
-        await sb
-            .from("approvals")
-            .update({
+        if (!session) {
 
-                status:
-                    "rejected"
-
-            })
-            .eq(
-                "id",
-                id
-            )
-            .eq(
-                "user_id",
-                session.user.id
+            alert(
+                "Please sign in first."
             );
+
+            return;
+        }
+
+
+        const {
+            error
+        } =
+            await sb
+                .from("approvals")
+                .update({
+
+                    status:
+                        "rejected"
+
+                })
+                .eq(
+                    "id",
+                    id
+                )
+                .eq(
+                    "user_id",
+                    session.user.id
+                );
+
+
+        if (error) {
+
+            console.error(
+                "Approval rejection error:",
+                error
+            );
+
+            alert(
+                error.message
+            );
+
+            return;
+        }
 
 
         await load();
     };
 
 
-/* =========================
+/* =========================================================
    START
-========================= */
+========================================================= */
 
 boot();
