@@ -1,33 +1,41 @@
 import {
-    client,
     adminClient,
     userFrom
 } from "../_shared/auth.ts";
 
 import {
     json,
-    cors,
-    optionsResponse
+    cors
 } from "../_shared/cors.ts";
 
+
+/* =========================================================
+   OBSEDIAN.SPACE
+   ADMIN EDGE FUNCTION
+========================================================= */
 
 Deno.serve(async (req) => {
 
     /* =====================================================
-       CORS PREFLIGHT
+       CORS
     ===================================================== */
 
     if (req.method === "OPTIONS") {
-        return optionsResponse();
+        return new Response(
+            "ok",
+            {
+                status: 200,
+                headers: cors
+            }
+        );
     }
 
 
     /* =====================================================
-       ONLY GET FOR NOW
+       GET ONLY
     ===================================================== */
 
     if (req.method !== "GET") {
-
         return json(
             {
                 error: "Method not allowed"
@@ -38,14 +46,12 @@ Deno.serve(async (req) => {
 
 
     /* =====================================================
-       AUTHENTICATE USER
+       AUTHENTICATED USER
     ===================================================== */
 
-    const user =
-        await userFrom(req);
+    const user = await userFrom(req);
 
     if (!user) {
-
         return json(
             {
                 error: "Unauthorized"
@@ -56,15 +62,14 @@ Deno.serve(async (req) => {
 
 
     /* =====================================================
-       ADMIN DATABASE CLIENT
+       SERVICE ROLE CLIENT
     ===================================================== */
 
     let sb;
 
     try {
 
-        sb =
-            adminClient();
+        sb = adminClient();
 
     } catch (error) {
 
@@ -76,7 +81,7 @@ Deno.serve(async (req) => {
         return json(
             {
                 error:
-                    "Admin server configuration error."
+                    "Admin server configuration is incomplete."
             },
             500
         );
@@ -84,40 +89,44 @@ Deno.serve(async (req) => {
 
 
     /* =====================================================
-       VERIFY ADMIN ROLE
+       VERIFY ADMIN
     ===================================================== */
 
     const {
         data: profile,
         error: profileError
-    } =
-        await sb
-            .from("profiles")
-            .select(`
-                id,
-                full_name,
-                phone,
-                avatar_url,
-                role,
-                timezone,
-                created_at,
-                updated_at
-            `)
-            .eq("id", user.id)
-            .maybeSingle();
+    } = await sb
+        .from("profiles")
+        .select(`
+            id,
+            full_name,
+            phone,
+            avatar_url,
+            role,
+            timezone,
+            created_at,
+            updated_at
+        `)
+        .eq(
+            "id",
+            user.id
+        )
+        .maybeSingle();
 
 
     if (profileError) {
 
         console.error(
-            "Admin profile lookup failed:",
+            "Admin profile error:",
             profileError
         );
 
         return json(
             {
                 error:
-                    "Unable to verify administrator account."
+                    "Unable to verify administrator account.",
+                details:
+                    profileError.message
             },
             500
         );
@@ -129,42 +138,26 @@ Deno.serve(async (req) => {
         return json(
             {
                 error:
-                    "Administrator profile not found.",
-                user_id:
-                    user.id
+                    "Administrator profile not found."
             },
             403
         );
     }
 
 
-   if (profile.role !== "admin") {
+    if (profile.role !== "admin") {
 
-    console.error(
-        "Admin access denied:",
-        {
-            user_id: user.id,
-            email: user.email,
-            role: profile.role
-        }
-    );
-
-    return json(
-        {
-            error: "Admin only",
-            debug: {
-                user_id: user.id,
-                email: user.email || "",
-                profile_role: profile.role || null
-            }
-        },
-        403
-    );
-}
+        return json(
+            {
+                error: "Admin only"
+            },
+            403
+        );
+    }
 
 
     /* =====================================================
-       REQUEST PARAMETERS
+       PARAMETERS
     ===================================================== */
 
     const url =
@@ -185,396 +178,374 @@ Deno.serve(async (req) => {
             .toLowerCase();
 
 
-  /* =====================================================
-   DASHBOARD
-===================================================== */
+    /* =====================================================
+       DASHBOARD
+    ===================================================== */
 
-if (
-    section ===
-    "dashboard"
-) {
+    if (section === "dashboard") {
 
-    /* -------------------------------------------------
-       ADMIN METRICS
+        const [
+            usersResult,
+            websitesResult,
+            subscriptionsResult,
+            aiRunsResult,
+            approvalsResult,
+            adsResult,
+            supportResult,
+            auditResult
+        ] = await Promise.all([
 
-       The requester has already been authenticated and
-       verified as an administrator above.
+            sb
+                .from("profiles")
+                .select(
+                    "id,role",
+                    {
+                        count: "exact",
+                        head: false
+                    }
+                ),
 
-       Use the service-role client here instead of calling
-       admin_metrics(), because RPC calls can lose the
-       browser JWT/auth.uid() context inside the Edge
-       Function.
-    ------------------------------------------------- */
+            sb
+                .from("websites")
+                .select(
+                    "id",
+                    {
+                        count: "exact",
+                        head: true
+                    }
+                ),
 
-    const [
-        usersResult,
-        websitesResult,
-        subscriptionsResult,
-        aiRunsResult,
-        auditLogsResult
-    ] = await Promise.all([
+            sb
+                .from("subscriptions")
+                .select(
+                    "id,plan_id,status,payment_amount,razorpay_payment_id"
+                ),
 
-        /* USERS */
-        adminDb
+            sb
+                .from("ai_runs")
+                .select(
+                    "id",
+                    {
+                        count: "exact",
+                        head: true
+                    }
+                ),
+
+            sb
+                .from("approvals")
+                .select(
+                    "id",
+                    {
+                        count: "exact",
+                        head: true
+                    }
+                )
+                .eq(
+                    "status",
+                    "pending"
+                ),
+
+            sb
+                .from("ad_campaigns")
+                .select(
+                    "id",
+                    {
+                        count: "exact",
+                        head: true
+                    }
+                ),
+
+            sb
+                .from("support_tickets")
+                .select(
+                    "id",
+                    {
+                        count: "exact",
+                        head: true
+                    }
+                ),
+
+            sb
+                .from("audit_logs")
+                .select("*")
+                .order(
+                    "created_at",
+                    {
+                        ascending: false
+                    }
+                )
+                .limit(100)
+        ]);
+
+
+        if (usersResult.error) {
+            return json(
+                {
+                    error:
+                        "Unable to load dashboard users.",
+                    details:
+                        usersResult.error.message
+                },
+                500
+            );
+        }
+
+
+        if (websitesResult.error) {
+            return json(
+                {
+                    error:
+                        "Unable to load dashboard websites.",
+                    details:
+                        websitesResult.error.message
+                },
+                500
+            );
+        }
+
+
+        if (subscriptionsResult.error) {
+            return json(
+                {
+                    error:
+                        "Unable to load dashboard subscriptions.",
+                    details:
+                        subscriptionsResult.error.message
+                },
+                500
+            );
+        }
+
+
+        if (aiRunsResult.error) {
+            return json(
+                {
+                    error:
+                        "Unable to load dashboard AI metrics.",
+                    details:
+                        aiRunsResult.error.message
+                },
+                500
+            );
+        }
+
+
+        const users =
+            usersResult.data || [];
+
+        const subscriptions =
+            subscriptionsResult.data || [];
+
+
+        const activeSubscriptions =
+            subscriptions.filter(
+                s =>
+                    String(
+                        s.status || ""
+                    ).toLowerCase() ===
+                    "active"
+            ).length;
+
+
+        const trialSubscriptions =
+            subscriptions.filter(
+                s =>
+                    String(
+                        s.status || ""
+                    ).toLowerCase() ===
+                    "trial"
+            ).length;
+
+
+        const paidSubscriptions =
+            subscriptions.filter(
+                s =>
+                    String(
+                        s.plan_id || ""
+                    ).toLowerCase() !==
+                    "free"
+            ).length;
+
+
+        const payments =
+            subscriptions.filter(
+                s =>
+                    Boolean(
+                        s.razorpay_payment_id
+                    )
+            );
+
+
+        const revenue =
+            payments.reduce(
+                (
+                    total,
+                    payment
+                ) =>
+                    total +
+                    (
+                        Number(
+                            payment.payment_amount
+                        ) || 0
+                    ),
+                0
+            );
+
+
+        return json(
+            {
+                success: true,
+
+                section:
+                    "dashboard",
+
+                metrics: {
+
+                    total_users:
+                        users.length,
+
+                    total_admins:
+                        users.filter(
+                            u =>
+                                u.role ===
+                                "admin"
+                        ).length,
+
+                    total_websites:
+                        websitesResult.count ||
+                        0,
+
+                    total_subscriptions:
+                        subscriptions.length,
+
+                    active_subscriptions:
+                        activeSubscriptions,
+
+                    trial_subscriptions:
+                        trialSubscriptions,
+
+                    paid_subscriptions:
+                        paidSubscriptions,
+
+                    total_payments:
+                        payments.length,
+
+                    total_revenue:
+                        revenue,
+
+                    total_ai_runs:
+                        aiRunsResult.count ||
+                        0,
+
+                    pending_approvals:
+                        approvalsResult.count ||
+                        0,
+
+                    ad_campaigns:
+                        adsResult.count ||
+                        0,
+
+                    support_tickets:
+                        supportResult.count ||
+                        0
+                },
+
+                logs:
+                    auditResult.data ||
+                    []
+            }
+        );
+    }
+
+
+    /* =====================================================
+       USERS
+    ===================================================== */
+
+    if (section === "users") {
+
+        const {
+            data: profiles,
+            error: profilesError
+        } = await sb
             .from("profiles")
-            .select(
-                "id, role",
-                {
-                    count: "exact",
-                    head: false
-                }
-            ),
-
-        /* WEBSITES */
-        adminDb
-            .from("websites")
-            .select(
-                "id",
-                {
-                    count: "exact",
-                    head: true
-                }
-            ),
-
-        /* SUBSCRIPTIONS */
-        adminDb
-            .from("subscriptions")
-            .select(`
-                id,
-                plan_id,
-                status,
-                payment_amount,
-                razorpay_payment_id
-            `),
-
-        /* AI RUNS */
-        adminDb
-            .from("ai_runs")
-            .select(
-                "id",
-                {
-                    count: "exact",
-                    head: true
-                }
-            ),
-
-        /* AUDIT LOGS */
-        adminDb
-            .from("audit_logs")
             .select("*")
             .order(
                 "created_at",
                 {
                     ascending: false
                 }
-            )
-            .limit(100)
-    ]);
-
-
-    /* -------------------------------------------------
-       ERROR CHECKS
-    ------------------------------------------------- */
-
-    if (usersResult.error) {
-
-        console.error(
-            "Dashboard users metrics error:",
-            usersResult.error
-        );
-
-        return json(
-            {
-                error:
-                    "Unable to load dashboard users metrics.",
-                details:
-                    usersResult.error.message
-            },
-            500
-        );
-    }
-
-
-    if (websitesResult.error) {
-
-        console.error(
-            "Dashboard websites metrics error:",
-            websitesResult.error
-        );
-
-        return json(
-            {
-                error:
-                    "Unable to load dashboard website metrics.",
-                details:
-                    websitesResult.error.message
-            },
-            500
-        );
-    }
-
-
-    if (subscriptionsResult.error) {
-
-        console.error(
-            "Dashboard subscriptions metrics error:",
-            subscriptionsResult.error
-        );
-
-        return json(
-            {
-                error:
-                    "Unable to load dashboard subscription metrics.",
-                details:
-                    subscriptionsResult.error.message
-            },
-            500
-        );
-    }
-
-
-    if (aiRunsResult.error) {
-
-        console.error(
-            "Dashboard AI metrics error:",
-            aiRunsResult.error
-        );
-
-        return json(
-            {
-                error:
-                    "Unable to load dashboard AI metrics.",
-                details:
-                    aiRunsResult.error.message
-            },
-            500
-        );
-    }
-
-
-    if (auditLogsResult.error) {
-
-        console.error(
-            "Dashboard audit logs error:",
-            auditLogsResult.error
-        );
-
-        return json(
-            {
-                error:
-                    "Unable to load dashboard audit logs.",
-                details:
-                    auditLogsResult.error.message
-            },
-            500
-        );
-    }
-
-
-    /* -------------------------------------------------
-       USERS
-    ------------------------------------------------- */
-
-    const profiles =
-        usersResult.data || [];
-
-
-    const totalUsers =
-        profiles.length;
-
-
-    const totalAdmins =
-        profiles.filter(
-            profile =>
-                profile.role ===
-                "admin"
-        ).length;
-
-
-    /* -------------------------------------------------
-       WEBSITES
-    ------------------------------------------------- */
-
-    const totalWebsites =
-        websitesResult.count || 0;
-
-
-    /* -------------------------------------------------
-       SUBSCRIPTIONS
-    ------------------------------------------------- */
-
-    const subscriptions =
-        subscriptionsResult.data || [];
-
-
-    const totalSubscriptions =
-        subscriptions.length;
-
-
-    const activeSubscriptions =
-        subscriptions.filter(
-            subscription =>
-                String(
-                    subscription.status || ""
-                ).toLowerCase() ===
-                "active"
-        ).length;
-
-
-    const trialSubscriptions =
-        subscriptions.filter(
-            subscription =>
-                String(
-                    subscription.status || ""
-                ).toLowerCase() ===
-                "trial"
-        ).length;
-
-
-    const cancelledSubscriptions =
-        subscriptions.filter(
-            subscription =>
-                String(
-                    subscription.status || ""
-                ).toLowerCase() ===
-                "cancelled"
-        ).length;
-
-
-    const paidSubscriptions =
-        subscriptions.filter(
-            subscription => {
-
-                const plan =
-                    String(
-                        subscription.plan_id || ""
-                    ).toLowerCase();
-
-                return (
-                    plan !== "" &&
-                    plan !== "free"
-                );
-            }
-        ).length;
-
-
-    /* -------------------------------------------------
-       PAYMENTS
-    ------------------------------------------------- */
-
-    const paidRows =
-        subscriptions.filter(
-            subscription =>
-                Boolean(
-                    subscription.razorpay_payment_id
-                )
-        );
-
-
-    const totalPayments =
-        paidRows.length;
-
-
-    const totalRevenue =
-        paidRows.reduce(
-            (
-                total,
-                subscription
-            ) => {
-
-                const amount =
-                    Number(
-                        subscription.payment_amount
-                    ) || 0;
-
-                return total + amount;
-
-            },
-            0
-        );
-
-
-    /* -------------------------------------------------
-       AI RUNS
-    ------------------------------------------------- */
-
-    const totalAiRuns =
-        aiRunsResult.count || 0;
-
-
-    /* -------------------------------------------------
-       METRICS OBJECT
-
-       Keep simple key/value fields because the current
-       admin.js dashboard automatically renders them.
-    ------------------------------------------------- */
-
-    const metrics = {
-
-        total_users:
-            totalUsers,
-
-        total_admins:
-            totalAdmins,
-
-        total_websites:
-            totalWebsites,
-
-        total_subscriptions:
-            totalSubscriptions,
-
-        active_subscriptions:
-            activeSubscriptions,
-
-        trial_subscriptions:
-            trialSubscriptions,
-
-        cancelled_subscriptions:
-            cancelledSubscriptions,
-
-        paid_subscriptions:
-            paidSubscriptions,
-
-        total_ai_runs:
-            totalAiRuns,
-
-        total_payments:
-            totalPayments,
-
-        total_revenue:
-            totalRevenue
-
-    };
-
-
-    /* -------------------------------------------------
-       RETURN DASHBOARD
-    ------------------------------------------------- */
-
-    return json(
-        {
-            success: true,
-
-            metrics,
-
-            logs:
-                auditLogsResult.data ||
-                []
+            );
+
+
+        if (profilesError) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load users.",
+                    details:
+                        profilesError.message
+                },
+                500
+            );
         }
-    );
-}
 
-        /* =================================================
-           WEBSITE COUNTS
-        ================================================= */
 
-        const websiteCounts:
-            Record<string, number> = {};
+        const {
+            data: subscriptions,
+            error: subscriptionsError
+        } = await sb
+            .from("subscriptions")
+            .select("*");
+
+
+        if (subscriptionsError) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load subscriptions.",
+                    details:
+                        subscriptionsError.message
+                },
+                500
+            );
+        }
+
+
+        const {
+            data: websites
+        } = await sb
+            .from("websites")
+            .select(
+                "user_id"
+            );
+
+
+        const {
+            data: aiRuns
+        } = await sb
+            .from("ai_runs")
+            .select(
+                "user_id"
+            );
+
+
+        const websiteCounts: Record<
+            string,
+            number
+        > = {};
+
+
+        const aiCounts: Record<
+            string,
+            number
+        > = {};
 
 
         for (
-            const website
-            of websites || []
+            const website of websites || []
         ) {
 
             if (!website.user_id) {
@@ -592,65 +563,50 @@ if (
         }
 
 
-        /* =================================================
-           AI RUN COUNTS
-        ================================================= */
-
-        const aiRunCounts:
-            Record<string, number> = {};
-
-
         for (
-            const run
-            of aiRuns || []
+            const run of aiRuns || []
         ) {
 
             if (!run.user_id) {
                 continue;
             }
 
-            aiRunCounts[
+            aiCounts[
                 run.user_id
             ] =
                 (
-                    aiRunCounts[
+                    aiCounts[
                         run.user_id
                     ] || 0
                 ) + 1;
         }
 
 
-        /* =================================================
-           NEWEST SUBSCRIPTION PER USER
-        ================================================= */
-
         const subscriptionMap:
             Record<string, any> = {};
 
 
         for (
-            const sub
-            of subscriptions || []
+            const sub of subscriptions || []
         ) {
 
             if (!sub.user_id) {
                 continue;
             }
 
-
-            const existing =
+            const old =
                 subscriptionMap[
                     sub.user_id
                 ];
 
 
             if (
-                !existing ||
+                !old ||
                 new Date(
                     sub.created_at || 0
                 ) >
                 new Date(
-                    existing.created_at || 0
+                    old.created_at || 0
                 )
             ) {
 
@@ -661,46 +617,35 @@ if (
         }
 
 
-        /* =================================================
-           AUTH USERS
-        ================================================= */
-
         const authUsers:
             Record<string, any> = {};
 
 
-        let authPage = 1;
-
-        const authPerPage = 1000;
+        let page = 1;
 
 
         while (true) {
 
             const {
-                data: authResult,
-                error: authError
+                data,
+                error
             } =
-                await sb.auth.admin.listUsers({
-                    page:
-                        authPage,
-                    perPage:
-                        authPerPage
-                });
-
-
-            if (authError) {
-
-                console.error(
-                    "Auth users error:",
-                    authError
+                await sb.auth.admin.listUsers(
+                    {
+                        page,
+                        perPage: 1000
+                    }
                 );
+
+
+            if (error) {
 
                 return json(
                     {
                         error:
                             "Unable to load authentication users.",
                         details:
-                            authError.message
+                            error.message
                     },
                     500
                 );
@@ -709,7 +654,7 @@ if (
 
             for (
                 const authUser
-                of authResult.users || []
+                of data.users || []
             ) {
 
                 authUsers[
@@ -719,32 +664,28 @@ if (
 
 
             if (
-                !authResult.users ||
-                authResult.users.length <
-                    authPerPage
+                !data.users ||
+                data.users.length <
+                    1000
             ) {
-
                 break;
             }
 
 
-            authPage++;
+            page++;
         }
 
 
-        /* =================================================
-           COMBINE USER DATA
-        ================================================= */
-
         let users =
-            (profiles || [])
-                .map((profile) => {
+            (
+                profiles || []
+            ).map(
+                profile => {
 
-                    const subscription =
+                    const sub =
                         subscriptionMap[
                             profile.id
                         ] || null;
-
 
                     const authUser =
                         authUsers[
@@ -758,10 +699,12 @@ if (
                             profile.id,
 
                         full_name:
-                            profile.full_name || "",
+                            profile.full_name ||
+                            "",
 
                         email:
-                            authUser?.email || "",
+                            authUser?.email ||
+                            "",
 
                         phone:
                             profile.phone ||
@@ -777,23 +720,23 @@ if (
                             "",
 
                         plan_id:
-                            subscription?.plan_id ||
+                            sub?.plan_id ||
                             "free",
 
                         billing_cycle:
-                            subscription?.billing_cycle ||
+                            sub?.billing_cycle ||
                             "free",
 
                         subscription_status:
-                            subscription?.status ||
+                            sub?.status ||
                             "none",
 
                         subscription_ends_at:
-                            subscription?.subscription_ends_at ||
+                            sub?.subscription_ends_at ||
                             null,
 
                         started_at:
-                            subscription?.started_at ||
+                            sub?.started_at ||
                             null,
 
                         websites:
@@ -802,7 +745,7 @@ if (
                             ] || 0,
 
                         ai_runs:
-                            aiRunCounts[
+                            aiCounts[
                                 profile.id
                             ] || 0,
 
@@ -812,33 +755,24 @@ if (
                         updated_at:
                             profile.updated_at
                     };
-                });
+                }
+            );
 
-
-        /* =================================================
-           SEARCH
-        ================================================= */
 
         if (search) {
 
             users =
                 users.filter(
-                    (user) => {
+                    user => {
 
-                        const haystack = [
+                        const value = [
 
                             user.id,
-
                             user.full_name,
-
                             user.email,
-
                             user.phone,
-
                             user.role,
-
                             user.plan_id,
-
                             user.subscription_status
 
                         ]
@@ -847,7 +781,7 @@ if (
                             .toLowerCase();
 
 
-                        return haystack.includes(
+                        return value.includes(
                             search
                         );
                     }
@@ -855,21 +789,424 @@ if (
         }
 
 
-        return json({
-
-            success: true,
-
-            users,
-
-            total:
-                users.length
-
-        });
+        return json(
+            {
+                success: true,
+                section: "users",
+                users,
+                total:
+                    users.length
+            }
+        );
     }
 
 
     /* =====================================================
-       UNKNOWN SECTION
+       SUBSCRIPTIONS
+    ===================================================== */
+
+    if (
+        section ===
+        "subscriptions"
+    ) {
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("subscriptions")
+            .select("*")
+            .order(
+                "created_at",
+                {
+                    ascending: false
+                }
+            );
+
+
+        if (error) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load subscriptions.",
+                    details:
+                        error.message
+                },
+                500
+            );
+        }
+
+
+        return json(
+            {
+                success: true,
+                section,
+                subscriptions:
+                    data || []
+            }
+        );
+    }
+
+
+    /* =====================================================
+       PAYMENTS
+    ===================================================== */
+
+    if (
+        section ===
+        "payments"
+    ) {
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("subscriptions")
+            .select(`
+                id,
+                user_id,
+                plan_id,
+                billing_cycle,
+                status,
+                razorpay_order_id,
+                razorpay_payment_id,
+                payment_amount,
+                currency,
+                last_payment_at,
+                created_at,
+                updated_at
+            `)
+            .not(
+                "razorpay_payment_id",
+                "is",
+                null
+            )
+            .order(
+                "last_payment_at",
+                {
+                    ascending: false
+                }
+            );
+
+
+        if (error) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load payments.",
+                    details:
+                        error.message
+                },
+                500
+            );
+        }
+
+
+        return json(
+            {
+                success: true,
+                section,
+                payments:
+                    data || []
+            }
+        );
+    }
+
+
+    /* =====================================================
+       AI OPERATIONS
+    ===================================================== */
+
+    if (
+        section ===
+        "ai"
+    ) {
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("ai_runs")
+            .select("*")
+            .order(
+                "created_at",
+                {
+                    ascending: false
+                }
+            )
+            .limit(500);
+
+
+        if (error) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load AI operations.",
+                    details:
+                        error.message
+                },
+                500
+            );
+        }
+
+
+        return json(
+            {
+                success: true,
+                section,
+                ai_runs:
+                    data || []
+            }
+        );
+    }
+
+
+    /* =====================================================
+       WEBSITES
+    ===================================================== */
+
+    if (
+        section ===
+        "websites"
+    ) {
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("websites")
+            .select("*")
+            .order(
+                "created_at",
+                {
+                    ascending: false
+                }
+            );
+
+
+        if (error) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load websites.",
+                    details:
+                        error.message
+                },
+                500
+            );
+        }
+
+
+        return json(
+            {
+                success: true,
+                section,
+                websites:
+                    data || []
+            }
+        );
+    }
+
+
+    /* =====================================================
+       APPROVALS
+    ===================================================== */
+
+    if (
+        section ===
+        "approvals"
+    ) {
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("approvals")
+            .select("*")
+            .order(
+                "created_at",
+                {
+                    ascending: false
+                }
+            );
+
+
+        if (error) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load approvals.",
+                    details:
+                        error.message
+                },
+                500
+            );
+        }
+
+
+        return json(
+            {
+                success: true,
+                section,
+                approvals:
+                    data || []
+            }
+        );
+    }
+
+
+    /* =====================================================
+       SUPPORT
+    ===================================================== */
+
+    if (
+        section ===
+        "support"
+    ) {
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("support_tickets")
+            .select("*")
+            .order(
+                "created_at",
+                {
+                    ascending: false
+                }
+            );
+
+
+        if (error) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load support tickets.",
+                    details:
+                        error.message
+                },
+                500
+            );
+        }
+
+
+        return json(
+            {
+                success: true,
+                section,
+                tickets:
+                    data || []
+            }
+        );
+    }
+
+
+    /* =====================================================
+       AUDIT LOGS
+    ===================================================== */
+
+    if (
+        section ===
+        "audit"
+    ) {
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("audit_logs")
+            .select("*")
+            .order(
+                "created_at",
+                {
+                    ascending: false
+                }
+            )
+            .limit(500);
+
+
+        if (error) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load audit logs.",
+                    details:
+                        error.message
+                },
+                500
+            );
+        }
+
+
+        return json(
+            {
+                success: true,
+                section,
+                logs:
+                    data || []
+            }
+        );
+    }
+
+
+    /* =====================================================
+       SETTINGS
+    ===================================================== */
+
+    if (
+        section ===
+        "settings"
+    ) {
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("settings")
+            .select("*")
+            .order(
+                "created_at",
+                {
+                    ascending: false
+                }
+            );
+
+
+        if (error) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load settings.",
+                    details:
+                        error.message
+                },
+                500
+            );
+        }
+
+
+        return json(
+            {
+                success: true,
+                section,
+                settings:
+                    data || []
+            }
+        );
+    }
+
+
+    /* =====================================================
+       UNKNOWN
     ===================================================== */
 
     return json(
