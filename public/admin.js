@@ -3888,48 +3888,176 @@ async function loadPayments() {
         "Loading payments..."
     );
 
+    try {
 
-    const data =
-        await api(
-            "payments"
-        );
+        const data =
+            await api(
+                "payments"
+            );
+
+        const payments =
+            Array.isArray(
+                data?.payments
+            )
+                ? data.payments
+                : [];
 
 
-    const payments =
-        data.payments || [];
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div class="admin-header">
+
+                    <div>
+
+                        <h2>
+                            Payments
+                        </h2>
+
+                        <p>
+                            ${payments.length}
+                            payment record(s).
+                        </p>
+
+                    </div>
 
 
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <div class="admin-header">
-
-                <div>
-
-                    <h2>
-                        Payments
-                    </h2>
-
-                    <p>
-                        ${payments.length}
-                        payment record(s).
-                    </p>
+                    <button
+                        id="paymentsRefresh"
+                        type="button"
+                    >
+                        Refresh
+                    </button>
 
                 </div>
 
-                <button
-                    id="paymentsRefresh"
-                >
-                    Refresh
-                </button>
 
-            </div>
+                ${
+                    payments.length
+                        ? `
+
+                    <div
+                        style="
+                            display:flex;
+                            gap:12px;
+                            flex-wrap:wrap;
+                            margin-bottom:18px;
+                        "
+                    >
+
+                        <input
+                            id="paymentSearch"
+                            class="search-box"
+                            type="search"
+                            placeholder="Search user, payment ID, order ID or plan..."
+                            autocomplete="off"
+                        >
 
 
-            ${
-                payments.length
-                    ? `
+                        <select
+                            id="paymentStatusFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:160px;
+                            "
+                        >
+
+                            <option value="">
+                                All Statuses
+                            </option>
+
+                            <option value="paid">
+                                Paid
+                            </option>
+
+                            <option value="success">
+                                Success
+                            </option>
+
+                            <option value="captured">
+                                Captured
+                            </option>
+
+                            <option value="failed">
+                                Failed
+                            </option>
+
+                            <option value="pending">
+                                Pending
+                            </option>
+
+                            <option value="refunded">
+                                Refunded
+                            </option>
+
+                            <option value="cancelled">
+                                Cancelled
+                            </option>
+
+                        </select>
+
+
+                        <select
+                            id="paymentCurrencyFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:130px;
+                            "
+                        >
+
+                            <option value="">
+                                All Currencies
+                            </option>
+
+                            ${[
+                                ...new Set(
+                                    payments
+                                        .map(
+                                            payment =>
+                                                String(
+                                                    payment.currency ||
+                                                    ""
+                                                )
+                                                    .trim()
+                                                    .toUpperCase()
+                                        )
+                                        .filter(Boolean)
+                                )
+                            ]
+                                .sort()
+                                .map(
+                                    currency => `
+                                        <option
+                                            value="${escapeHtml(currency)}"
+                                        >
+                                            ${escapeHtml(currency)}
+                                        </option>
+                                    `
+                                )
+                                .join("")}
+
+                        </select>
+
+                    </div>
+
+
+                    <div
+                        id="paymentResultCount"
+                        style="
+                            margin-bottom:12px;
+                            color:#6b7280;
+                            font-size:14px;
+                        "
+                    >
+                        Showing ${payments.length}
+                        payment(s)
+                    </div>
+
 
                     <div class="admin-table-wrapper">
 
@@ -3944,6 +4072,10 @@ async function loadPayments() {
                                     </th>
 
                                     <th>
+                                        Plan
+                                    </th>
+
+                                    <th>
                                         Amount
                                     </th>
 
@@ -3952,7 +4084,7 @@ async function loadPayments() {
                                     </th>
 
                                     <th>
-                                        Razorpay Order
+                                        Order ID
                                     </th>
 
                                     <th>
@@ -3960,82 +4092,217 @@ async function loadPayments() {
                                     </th>
 
                                     <th>
-                                        Last Payment
+                                        Payment Date
                                     </th>
 
                                     <th>
                                         Status
                                     </th>
 
+                                    <th>
+                                        Action
+                                    </th>
+
                                 </tr>
 
                             </thead>
 
-                            <tbody>
+
+                            <tbody id="paymentsTableBody">
 
                                 ${payments
                                     .map(
-                                        payment => `
+                                        (
+                                            payment,
+                                            index
+                                        ) => {
 
-                                        <tr>
+                                            const searchable =
+                                                [
+                                                    payment.id,
+                                                    payment.user_id,
+                                                    payment.plan_id,
+                                                    payment.billing_cycle,
+                                                    payment.status,
+                                                    payment.currency,
+                                                    payment.razorpay_order_id,
+                                                    payment.razorpay_payment_id
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(" ")
+                                                    .toLowerCase();
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    payment.user_id ||
-                                                    "—"
-                                                )}
-                                            </td>
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    payment.payment_amount ??
-                                                    "—"
-                                                )}
-                                            </td>
-
-                                            <td>
-                                                ${escapeHtml(
+                                            const currency =
+                                                String(
                                                     payment.currency ||
-                                                    "—"
-                                                )}
-                                            </td>
+                                                    ""
+                                                )
+                                                    .trim()
+                                                    .toLowerCase();
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    payment.razorpay_order_id ||
-                                                    "—"
-                                                )}
-                                            </td>
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    payment.razorpay_payment_id ||
-                                                    "—"
-                                                )}
-                                            </td>
+                                            const status =
+                                                String(
+                                                    payment.status ||
+                                                    ""
+                                                )
+                                                    .trim()
+                                                    .toLowerCase();
 
-                                            <td>
-                                                ${formatDate(
-                                                    payment.last_payment_at
-                                                )}
-                                            </td>
 
-                                            <td>
+                                            return `
 
-                                                <span class="badge">
+                                                <tr
+                                                    class="payment-row"
+                                                    data-index="${index}"
+                                                    data-search="${escapeHtml(
+                                                        searchable
+                                                    )}"
+                                                    data-status="${escapeHtml(
+                                                        status
+                                                    )}"
+                                                    data-currency="${escapeHtml(
+                                                        currency
+                                                    )}"
+                                                >
 
-                                                    ${escapeHtml(
-                                                        payment.status ||
-                                                        "—"
-                                                    )}
+                                                    <td>
 
-                                                </span>
+                                                        <strong>
+                                                            ${escapeHtml(
+                                                                payment.user_email ||
+                                                                payment.email ||
+                                                                payment.user_id ||
+                                                                "—"
+                                                            )}
+                                                        </strong>
 
-                                            </td>
+                                                        ${
+                                                            payment.user_id
+                                                                ? `
+                                                                    <br>
+                                                                    <small
+                                                                        style="
+                                                                            color:#6b7280;
+                                                                            word-break:break-all;
+                                                                        "
+                                                                    >
+                                                                        ${escapeHtml(
+                                                                            payment.user_id
+                                                                        )}
+                                                                    </small>
+                                                                `
+                                                                : ""
+                                                        }
 
-                                        </tr>
+                                                    </td>
 
-                                    `
+
+                                                    <td>
+
+                                                        <span
+                                                            class="badge"
+                                                        >
+                                                            ${escapeHtml(
+                                                                payment.plan_id ||
+                                                                "—"
+                                                            )}
+                                                        </span>
+
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <strong>
+                                                            ${escapeHtml(
+                                                                payment.payment_amount ??
+                                                                "—"
+                                                            )}
+                                                        </strong>
+
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            payment.currency ||
+                                                            "—"
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <small
+                                                            style="
+                                                                word-break:break-all;
+                                                            "
+                                                        >
+                                                            ${escapeHtml(
+                                                                payment.razorpay_order_id ||
+                                                                "—"
+                                                            )}
+                                                        </small>
+
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <small
+                                                            style="
+                                                                word-break:break-all;
+                                                            "
+                                                        >
+                                                            ${escapeHtml(
+                                                                payment.razorpay_payment_id ||
+                                                                "—"
+                                                            )}
+                                                        </small>
+
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${formatDate(
+                                                            payment.last_payment_at
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <span
+                                                            class="badge"
+                                                        >
+                                                            ${escapeHtml(
+                                                                payment.status ||
+                                                                "—"
+                                                            )}
+                                                        </span>
+
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <button
+                                                            type="button"
+                                                            class="payment-view-btn"
+                                                            data-index="${index}"
+                                                        >
+                                                            View
+                                                        </button>
+
+                                                    </td>
+
+                                                </tr>
+
+                                            `;
+
+                                        }
                                     )
                                     .join("")}
 
@@ -4046,22 +4313,630 @@ async function loadPayments() {
                     </div>
 
                 `
-                    : `
+                        : `
+
                     <div class="empty">
-                        No payment records found.
+
+                        <h3>
+                            No payment records found
+                        </h3>
+
+                        <p>
+                            No payments have been recorded yet.
+                        </p>
+
                     </div>
+
                 `
+                }
+
+            </div>
+
+
+            <!-- PAYMENT DETAILS MODAL -->
+
+            <div
+                id="paymentDetailsModal"
+                style="
+                    display:none;
+                    position:fixed;
+                    inset:0;
+                    background:rgba(0,0,0,.55);
+                    z-index:9999;
+                    padding:20px;
+                    overflow:auto;
+                "
+            >
+
+                <div
+                    style="
+                        max-width:760px;
+                        margin:50px auto;
+                        background:#fff;
+                        border-radius:14px;
+                        padding:24px;
+                        box-shadow:0 20px 60px rgba(0,0,0,.25);
+                    "
+                >
+
+                    <div
+                        style="
+                            display:flex;
+                            align-items:center;
+                            justify-content:space-between;
+                            gap:15px;
+                            margin-bottom:20px;
+                        "
+                    >
+
+                        <h2
+                            id="paymentModalTitle"
+                            style="margin:0;"
+                        >
+                            Payment Details
+                        </h2>
+
+
+                        <button
+                            id="paymentModalClose"
+                            type="button"
+                        >
+                            ×
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="paymentModalBody"
+                    ></div>
+
+
+                    <div
+                        style="
+                            margin-top:24px;
+                            text-align:right;
+                        "
+                    >
+
+                        <button
+                            id="paymentModalCloseBottom"
+                            type="button"
+                        >
+                            Close
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        /* =====================================================
+           REFRESH
+        ===================================================== */
+
+        const refresh =
+            $("paymentsRefresh");
+
+        if (refresh) {
+
+            refresh.onclick =
+                () => loadPayments();
+
+        }
+
+
+        /* =====================================================
+           FILTERS
+        ===================================================== */
+
+        const searchInput =
+            $("paymentSearch");
+
+        const statusFilter =
+            $("paymentStatusFilter");
+
+        const currencyFilter =
+            $("paymentCurrencyFilter");
+
+        const resultCount =
+            $("paymentResultCount");
+
+
+        function filterPayments() {
+
+            const search =
+                String(
+                    searchInput?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const status =
+                String(
+                    statusFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const currency =
+                String(
+                    currencyFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const rows =
+                document.querySelectorAll(
+                    ".payment-row"
+                );
+
+
+            let visible =
+                0;
+
+
+            rows.forEach(
+                row => {
+
+                    const rowSearch =
+                        row.dataset.search ||
+                        "";
+
+                    const rowStatus =
+                        row.dataset.status ||
+                        "";
+
+                    const rowCurrency =
+                        row.dataset.currency ||
+                        "";
+
+
+                    const matchesSearch =
+                        !search ||
+                        rowSearch.includes(
+                            search
+                        );
+
+
+                    const matchesStatus =
+                        !status ||
+                        rowStatus ===
+                            status;
+
+
+                    const matchesCurrency =
+                        !currency ||
+                        rowCurrency ===
+                            currency;
+
+
+                    const show =
+                        matchesSearch &&
+                        matchesStatus &&
+                        matchesCurrency;
+
+
+                    row.style.display =
+                        show
+                            ? ""
+                            : "none";
+
+
+                    if (show) {
+                        visible++;
+                    }
+
+                }
+            );
+
+
+            if (resultCount) {
+
+                resultCount.textContent =
+                    `Showing ${visible} payment(s)`;
+
             }
 
-        </div>
-    `;
+        }
 
 
-    $("paymentsRefresh").onclick =
-        () =>
-            loadPayments();
+        if (searchInput) {
+
+            searchInput.addEventListener(
+                "input",
+                filterPayments
+            );
+
+        }
+
+
+        if (statusFilter) {
+
+            statusFilter.addEventListener(
+                "change",
+                filterPayments
+            );
+
+        }
+
+
+        if (currencyFilter) {
+
+            currencyFilter.addEventListener(
+                "change",
+                filterPayments
+            );
+
+        }
+
+
+        /* =====================================================
+           MODAL
+        ===================================================== */
+
+        const modal =
+            $("paymentDetailsModal");
+
+        const modalTitle =
+            $("paymentModalTitle");
+
+        const modalBody =
+            $("paymentModalBody");
+
+
+        function closePaymentModal() {
+
+            if (modal) {
+
+                modal.style.display =
+                    "none";
+
+            }
+
+        }
+
+
+        $("paymentModalClose")
+            ?.addEventListener(
+                "click",
+                closePaymentModal
+            );
+
+
+        $("paymentModalCloseBottom")
+            ?.addEventListener(
+                "click",
+                closePaymentModal
+            );
+
+
+        if (modal) {
+
+            modal.addEventListener(
+                "click",
+                event => {
+
+                    if (
+                        event.target ===
+                        modal
+                    ) {
+
+                        closePaymentModal();
+
+                    }
+
+                }
+            );
+
+        }
+
+
+        /* =====================================================
+           VIEW PAYMENT
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".payment-view-btn"
+            )
+            .forEach(
+                button => {
+
+                    button.addEventListener(
+                        "click",
+                        () => {
+
+                            const index =
+                                Number(
+                                    button.dataset.index
+                                );
+
+
+                            const payment =
+                                payments[
+                                    index
+                                ];
+
+
+                            if (!payment) {
+                                return;
+                            }
+
+
+                            if (modalTitle) {
+
+                                modalTitle.textContent =
+                                    "Payment Details";
+
+                            }
+
+
+                            if (modalBody) {
+
+                                modalBody.innerHTML = `
+
+                                    <div
+                                        style="
+                                            display:grid;
+                                            grid-template-columns:
+                                                minmax(180px,200px)
+                                                1fr;
+                                            border:1px solid #e5e7eb;
+                                            border-radius:10px;
+                                            overflow:hidden;
+                                        "
+                                    >
+
+                                        <div class="payment-detail-label">
+                                            Payment Record ID
+                                        </div>
+
+                                        <div class="payment-detail-value">
+                                            ${escapeHtml(
+                                                payment.id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            User ID
+                                        </div>
+
+                                        <div class="payment-detail-value">
+                                            ${escapeHtml(
+                                                payment.user_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            Plan
+                                        </div>
+
+                                        <div class="payment-detail-value">
+                                            ${escapeHtml(
+                                                payment.plan_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            Billing Cycle
+                                        </div>
+
+                                        <div class="payment-detail-value">
+                                            ${escapeHtml(
+                                                payment.billing_cycle ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            Amount
+                                        </div>
+
+                                        <div class="payment-detail-value">
+
+                                            <strong>
+                                                ${escapeHtml(
+                                                    payment.payment_amount ??
+                                                    "—"
+                                                )}
+                                            </strong>
+
+                                            ${
+                                                payment.currency
+                                                    ? `
+                                                        ${escapeHtml(
+                                                            payment.currency
+                                                        )}
+                                                    `
+                                                    : ""
+                                            }
+
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            Status
+                                        </div>
+
+                                        <div class="payment-detail-value">
+
+                                            <span class="badge">
+                                                ${escapeHtml(
+                                                    payment.status ||
+                                                    "—"
+                                                )}
+                                            </span>
+
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            Razorpay Order ID
+                                        </div>
+
+                                        <div class="payment-detail-value">
+                                            ${escapeHtml(
+                                                payment.razorpay_order_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            Razorpay Payment ID
+                                        </div>
+
+                                        <div class="payment-detail-value">
+                                            ${escapeHtml(
+                                                payment.razorpay_payment_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            Last Payment
+                                        </div>
+
+                                        <div class="payment-detail-value">
+                                            ${formatDate(
+                                                payment.last_payment_at
+                                            )}
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            Created
+                                        </div>
+
+                                        <div class="payment-detail-value">
+                                            ${formatDate(
+                                                payment.created_at
+                                            )}
+                                        </div>
+
+
+                                        <div class="payment-detail-label">
+                                            Updated
+                                        </div>
+
+                                        <div class="payment-detail-value">
+                                            ${formatDate(
+                                                payment.updated_at
+                                            )}
+                                        </div>
+
+                                    </div>
+
+
+                                    <style>
+
+                                        .payment-detail-label {
+                                            padding:12px;
+                                            background:#f9fafb;
+                                            border-bottom:1px solid #e5e7eb;
+                                            font-weight:600;
+                                        }
+
+                                        .payment-detail-value {
+                                            padding:12px;
+                                            border-bottom:1px solid #e5e7eb;
+                                            word-break:break-word;
+                                        }
+
+                                    </style>
+
+                                `;
+
+                            }
+
+
+                            if (modal) {
+
+                                modal.style.display =
+                                    "block";
+
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+
+    } catch (error) {
+
+        console.error(
+            "Payments section error:",
+            error
+        );
+
+
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div
+                    style="
+                        padding:25px;
+                        text-align:center;
+                    "
+                >
+
+                    <h2>
+                        Unable to load payments
+                    </h2>
+
+                    <p>
+                        ${escapeHtml(
+                            error?.message ||
+                            "An unexpected error occurred."
+                        )}
+                    </p>
+
+                    <button
+                        id="paymentsRetry"
+                        type="button"
+                    >
+                        Retry
+                    </button>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        $("paymentsRetry")
+            ?.addEventListener(
+                "click",
+                () =>
+                    loadPayments()
+            );
+
+    }
+
 }
-
 
 /* =========================================================
    AI OPERATIONS
