@@ -8488,129 +8488,386 @@ async function logout() {
 
 
 /* =========================================================
-   NAV BUTTON EVENTS
-   FIXED - DOM SAFE + EVENT DELEGATION
+   ADMIN NAVIGATION
+   FINAL ROBUST VERSION
 ========================================================= */
 
-function initializeAdminNavigation() {
+(function initializeAdminNavigation() {
 
     console.log(
-        "Initializing Admin Navigation..."
+        "[ADMIN] Initializing navigation..."
     );
 
 
-    /*
-     * Event delegation:
-     * We attach ONE listener to document.
-     * This works even if navigation buttons
-     * are rendered/replaced later.
-     */
-
-    if (
-        window.__adminNavigationInitialized
+    function navigateFromElement(
+        element,
+        event
     ) {
-        console.log(
-            "Admin Navigation already initialized."
-        );
 
-        return;
-    }
+        if (!element) {
+            return;
+        }
 
 
-    window.__adminNavigationInitialized =
-        true;
-
-
-    document.addEventListener(
-        "click",
-        function (event) {
-
-            const button =
-                event.target.closest(
-                    ".admin-nav button"
-                );
-
-
-            /*
-             * Click was not on an admin
-             * navigation button.
-             */
-
-            if (!button) {
-                return;
-            }
-
-
-            /*
-             * Stop default button/form behavior.
-             */
-
-            event.preventDefault();
-
-            event.stopPropagation();
-
-
-            const section =
-                button.getAttribute(
-                    "data-section"
-                );
-
-
-            console.log(
-                "Admin navigation clicked:",
-                section
+        const section =
+            element.getAttribute(
+                "data-section"
             );
 
 
-            if (!section) {
-
-                console.error(
-                    "Admin navigation button is missing data-section:",
-                    button
-                );
-
-                return;
-            }
+        if (!section) {
+            return;
+        }
 
 
-            /*
-             * Load selected section.
-             */
+        /*
+         * Only handle actual Admin navigation
+         * elements.
+         */
+
+        const allowedSections = [
+            "dashboard",
+            "users",
+            "websites",
+            "subscriptions",
+            "payments",
+            "ai",
+            "approvals",
+            "support",
+            "audit",
+            "settings"
+        ];
+
+
+        if (
+            !allowedSections.includes(
+                section
+            )
+        ) {
+
+            console.warn(
+                "[ADMIN] Unknown navigation section:",
+                section
+            );
+
+            return;
+        }
+
+
+        if (event) {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+        }
+
+
+        console.log(
+            "[ADMIN] Navigation:",
+            section
+        );
+
+
+        /*
+         * Update active state immediately.
+         */
+
+        document
+            .querySelectorAll(
+                "[data-section]"
+            )
+            .forEach(
+                item => {
+
+                    const itemSection =
+                        item.getAttribute(
+                            "data-section"
+                        );
+
+                    item.classList.toggle(
+                        "active",
+                        itemSection ===
+                            section
+                    );
+
+                }
+            );
+
+
+        /*
+         * Load requested Admin section.
+         */
+
+        if (
+            typeof loadSection ===
+            "function"
+        ) {
 
             loadSection(
                 section
             );
 
+        } else {
+
+            console.error(
+                "[ADMIN] loadSection() is not available."
+            );
+
+        }
+
+    }
+
+
+    /*
+     * DIRECT BINDING
+     *
+     * This does not depend on .admin-nav.
+     */
+
+    function bindNavigationButtons() {
+
+        const elements =
+            document.querySelectorAll(
+                "[data-section]"
+            );
+
+
+        console.log(
+            "[ADMIN] Navigation elements found:",
+            elements.length
+        );
+
+
+        elements.forEach(
+            element => {
+
+                /*
+                 * Ignore elements that are
+                 * not Admin navigation.
+                 */
+
+                const section =
+                    element.getAttribute(
+                        "data-section"
+                    );
+
+
+                const allowedSections = [
+                    "dashboard",
+                    "users",
+                    "websites",
+                    "subscriptions",
+                    "payments",
+                    "ai",
+                    "approvals",
+                    "support",
+                    "audit",
+                    "settings"
+                ];
+
+
+                if (
+                    !allowedSections.includes(
+                        section
+                    )
+                ) {
+
+                    return;
+
+                }
+
+
+                /*
+                 * Remove any previous handler
+                 * assigned by this property.
+                 */
+
+                element.onclick =
+                    null;
+
+
+                /*
+                 * Direct click handler.
+                 */
+
+                element.onclick =
+                    function (event) {
+
+                        navigateFromElement(
+                            this,
+                            event
+                        );
+
+                    };
+
+            }
+        );
+
+    }
+
+
+    /*
+     * Run immediately if DOM already exists.
+     */
+
+    bindNavigationButtons();
+
+
+    /*
+     * Run again when DOM is ready.
+     */
+
+    if (
+        document.readyState ===
+        "loading"
+    ) {
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            bindNavigationButtons,
+            {
+                once: true
+            }
+        );
+
+    }
+
+
+    /*
+     * Delegated fallback.
+     *
+     * We intentionally do NOT use
+     * ".admin-nav button".
+     */
+
+    document.addEventListener(
+        "click",
+        function (event) {
+
+            let element =
+                event.target;
+
+
+            if (
+                !element ||
+                typeof element.closest !==
+                    "function"
+            ) {
+
+                return;
+
+            }
+
+
+            element =
+                element.closest(
+                    "[data-section]"
+                );
+
+
+            if (!element) {
+                return;
+            }
+
+
+            navigateFromElement(
+                element,
+                event
+            );
+
         },
-        false
+        true
     );
+
+
+    /*
+     * Capture pointer events too.
+     *
+     * This helps when another element/script
+     * interferes with normal click handling.
+     */
+
+    document.addEventListener(
+        "pointerup",
+        function (event) {
+
+            const element =
+                event.target?.closest?.(
+                    "[data-section]"
+                );
+
+
+            if (!element) {
+                return;
+            }
+
+
+            const section =
+                element.getAttribute(
+                    "data-section"
+                );
+
+
+            if (!section) {
+                return;
+            }
+
+
+            console.log(
+                "[ADMIN] Pointer navigation:",
+                section
+            );
+
+        },
+        true
+    );
+
+
+    /*
+     * Re-bind if the sidebar is dynamically
+     * replaced.
+     */
+
+    if (
+        typeof MutationObserver !==
+        "undefined"
+    ) {
+
+        const observer =
+            new MutationObserver(
+                () => {
+
+                    bindNavigationButtons();
+
+                }
+            );
+
+
+        const root =
+            document.body ||
+            document.documentElement;
+
+
+        if (root) {
+
+            observer.observe(
+                root,
+                {
+                    childList: true,
+                    subtree: true
+                }
+            );
+
+        }
+
+    }
 
 
     console.log(
-        "Admin Navigation initialized successfully."
-    );
-}
-
-
-/*
- * Initialize after DOM is ready.
- */
-
-if (
-    document.readyState ===
-    "loading"
-) {
-
-    document.addEventListener(
-        "DOMContentLoaded",
-        initializeAdminNavigation
+        "[ADMIN] Navigation initialized."
     );
 
-} else {
-
-    initializeAdminNavigation();
-
-}
+})();
 /* =========================================================
    LOGOUT BUTTON
 ========================================================= */
