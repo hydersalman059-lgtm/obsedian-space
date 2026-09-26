@@ -6309,7 +6309,1060 @@ async function loadSupport() {
 
     }
 
+
+
 }
+
+
+
+
+
+
+
+
+/* =========================================================
+   AUDIT LOGS
+========================================================= */
+
+async function loadAudit() {
+
+    $("pageTitle").textContent =
+        "Audit Logs";
+
+    showLoading(
+        "Loading audit logs..."
+    );
+
+    try {
+
+        const data =
+            await api(
+                "audit"
+            );
+
+        const logs =
+            Array.isArray(
+                data?.logs
+            )
+                ? data.logs
+                : Array.isArray(
+                    data?.audit_logs
+                )
+                    ? data.audit_logs
+                    : Array.isArray(
+                        data?.data
+                    )
+                        ? data.data
+                        : [];
+
+
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div class="admin-header">
+
+                    <div>
+
+                        <h2>
+                            Audit Logs
+                        </h2>
+
+                        <p>
+                            ${logs.length}
+                            record(s).
+                        </p>
+
+                    </div>
+
+
+                    <button
+                        id="auditRefresh"
+                        type="button"
+                    >
+                        Refresh
+                    </button>
+
+                </div>
+
+
+                ${
+                    logs.length
+                        ? `
+
+                    <!-- FILTERS -->
+
+                    <div
+                        style="
+                            display:flex;
+                            gap:12px;
+                            flex-wrap:wrap;
+                            margin-bottom:18px;
+                        "
+                    >
+
+                        <input
+                            id="auditSearch"
+                            class="search-box"
+                            type="search"
+                            placeholder="Search action, user, entity, IP..."
+                            autocomplete="off"
+                        >
+
+
+                        <select
+                            id="auditActionFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:170px;
+                            "
+                        >
+
+                            <option value="">
+                                All Actions
+                            </option>
+
+                            ${[
+                                ...new Set(
+                                    logs
+                                        .map(
+                                            log =>
+                                                String(
+                                                    log.action ||
+                                                    log.event ||
+                                                    log.name ||
+                                                    ""
+                                                ).trim()
+                                        )
+                                        .filter(Boolean)
+                                )
+                            ]
+                                .sort()
+                                .map(
+                                    action => `
+                                        <option
+                                            value="${escapeHtml(
+                                                action.toLowerCase()
+                                            )}"
+                                        >
+                                            ${escapeHtml(action)}
+                                        </option>
+                                    `
+                                )
+                                .join("")}
+
+                        </select>
+
+
+                        <select
+                            id="auditEntityFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:170px;
+                            "
+                        >
+
+                            <option value="">
+                                All Entities
+                            </option>
+
+                            ${[
+                                ...new Set(
+                                    logs
+                                        .map(
+                                            log =>
+                                                String(
+                                                    log.entity_type ||
+                                                    log.entity ||
+                                                    log.kind ||
+                                                    log.type ||
+                                                    ""
+                                                ).trim()
+                                        )
+                                        .filter(Boolean)
+                                )
+                            ]
+                                .sort()
+                                .map(
+                                    entity => `
+                                        <option
+                                            value="${escapeHtml(
+                                                entity.toLowerCase()
+                                            )}"
+                                        >
+                                            ${escapeHtml(entity)}
+                                        </option>
+                                    `
+                                )
+                                .join("")}
+
+                        </select>
+
+                    </div>
+
+
+                    <div
+                        id="auditResultCount"
+                        style="
+                            margin-bottom:12px;
+                            color:#6b7280;
+                            font-size:14px;
+                        "
+                    >
+                        Showing ${logs.length}
+                        record(s)
+                    </div>
+
+
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        Time
+                                    </th>
+
+                                    <th>
+                                        Action
+                                    </th>
+
+                                    <th>
+                                        User
+                                    </th>
+
+                                    <th>
+                                        Entity
+                                    </th>
+
+                                    <th>
+                                        IP Address
+                                    </th>
+
+                                    <th>
+                                        Action
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+
+                            <tbody>
+
+                                ${logs
+                                    .map(
+                                        (
+                                            log,
+                                            index
+                                        ) => {
+
+                                            const action =
+                                                log.action ||
+                                                log.event ||
+                                                log.name ||
+                                                "—";
+
+
+                                            const entity =
+                                                log.entity_type ||
+                                                log.entity ||
+                                                log.kind ||
+                                                log.type ||
+                                                "—";
+
+
+                                            const searchable =
+                                                [
+                                                    log.id,
+                                                    log.user_id,
+                                                    log.user_email,
+                                                    action,
+                                                    entity,
+                                                    log.entity_id,
+                                                    log.ip_address,
+                                                    log.ip,
+                                                    log.user_agent,
+                                                    JSON.stringify(
+                                                        log.metadata ||
+                                                        {}
+                                                    )
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(" ")
+                                                    .toLowerCase();
+
+
+                                            return `
+
+                                                <tr
+                                                    class="audit-row"
+                                                    data-search="${escapeHtml(
+                                                        searchable
+                                                    )}"
+                                                    data-action="${escapeHtml(
+                                                        String(
+                                                            action
+                                                        )
+                                                            .trim()
+                                                            .toLowerCase()
+                                                    )}"
+                                                    data-entity="${escapeHtml(
+                                                        String(
+                                                            entity
+                                                        )
+                                                            .trim()
+                                                            .toLowerCase()
+                                                    )}"
+                                                >
+
+                                                    <td>
+                                                        ${formatDateTime(
+                                                            log.created_at
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <span
+                                                            class="badge"
+                                                        >
+                                                            ${escapeHtml(
+                                                                action
+                                                            )}
+                                                        </span>
+
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <small
+                                                            style="
+                                                                word-break:break-all;
+                                                            "
+                                                        >
+                                                            ${escapeHtml(
+                                                                log.user_email ||
+                                                                log.user_id ||
+                                                                "—"
+                                                            )}
+                                                        </small>
+
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        ${escapeHtml(
+                                                            entity
+                                                        )}
+
+                                                        ${
+                                                            log.entity_id
+                                                                ? `
+                                                                    <br>
+                                                                    <small
+                                                                        style="
+                                                                            color:#6b7280;
+                                                                            word-break:break-all;
+                                                                        "
+                                                                    >
+                                                                        ${escapeHtml(
+                                                                            log.entity_id
+                                                                        )}
+                                                                    </small>
+                                                                `
+                                                                : ""
+                                                        }
+
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        ${escapeHtml(
+                                                            log.ip_address ||
+                                                            log.ip ||
+                                                            "—"
+                                                        )}
+
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <button
+                                                            type="button"
+                                                            class="audit-view-btn"
+                                                            data-index="${index}"
+                                                        >
+                                                            View
+                                                        </button>
+
+                                                    </td>
+
+                                                </tr>
+
+                                            `;
+
+                                        }
+                                    )
+                                    .join("")}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                `
+                        : `
+
+                    <div class="empty">
+
+                        <h3>
+                            No audit logs found
+                        </h3>
+
+                        <p>
+                            No audit activity has been recorded yet.
+                        </p>
+
+                    </div>
+
+                `
+                }
+
+            </div>
+
+
+            <!-- AUDIT DETAILS MODAL -->
+
+            <div
+                id="auditDetailsModal"
+                style="
+                    display:none;
+                    position:fixed;
+                    inset:0;
+                    background:rgba(0,0,0,.55);
+                    z-index:9999;
+                    padding:20px;
+                    overflow:auto;
+                "
+            >
+
+                <div
+                    style="
+                        max-width:850px;
+                        margin:50px auto;
+                        background:#fff;
+                        border-radius:14px;
+                        padding:24px;
+                        box-shadow:0 20px 60px rgba(0,0,0,.25);
+                    "
+                >
+
+                    <div
+                        style="
+                            display:flex;
+                            align-items:center;
+                            justify-content:space-between;
+                            gap:15px;
+                            margin-bottom:20px;
+                        "
+                    >
+
+                        <h2
+                            style="margin:0;"
+                        >
+                            Audit Log Details
+                        </h2>
+
+
+                        <button
+                            id="auditModalClose"
+                            type="button"
+                        >
+                            ×
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="auditModalBody"
+                    ></div>
+
+
+                    <div
+                        style="
+                            margin-top:24px;
+                            text-align:right;
+                        "
+                    >
+
+                        <button
+                            id="auditModalCloseBottom"
+                            type="button"
+                        >
+                            Close
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        /* =====================================================
+           REFRESH
+        ===================================================== */
+
+        $("auditRefresh")
+            ?.addEventListener(
+                "click",
+                () =>
+                    loadAudit()
+            );
+
+
+        /* =====================================================
+           FILTERS
+        ===================================================== */
+
+        const searchInput =
+            $("auditSearch");
+
+        const actionFilter =
+            $("auditActionFilter");
+
+        const entityFilter =
+            $("auditEntityFilter");
+
+        const resultCount =
+            $("auditResultCount");
+
+
+        function filterAudit() {
+
+            const search =
+                String(
+                    searchInput?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const action =
+                String(
+                    actionFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const entity =
+                String(
+                    entityFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const rows =
+                document.querySelectorAll(
+                    ".audit-row"
+                );
+
+
+            let visible =
+                0;
+
+
+            rows.forEach(
+                row => {
+
+                    const rowSearch =
+                        row.dataset.search ||
+                        "";
+
+                    const rowAction =
+                        row.dataset.action ||
+                        "";
+
+                    const rowEntity =
+                        row.dataset.entity ||
+                        "";
+
+
+                    const matchesSearch =
+                        !search ||
+                        rowSearch.includes(
+                            search
+                        );
+
+
+                    const matchesAction =
+                        !action ||
+                        rowAction ===
+                            action;
+
+
+                    const matchesEntity =
+                        !entity ||
+                        rowEntity ===
+                            entity;
+
+
+                    const show =
+                        matchesSearch &&
+                        matchesAction &&
+                        matchesEntity;
+
+
+                    row.style.display =
+                        show
+                            ? ""
+                            : "none";
+
+
+                    if (show) {
+                        visible++;
+                    }
+
+                }
+            );
+
+
+            if (resultCount) {
+
+                resultCount.textContent =
+                    `Showing ${visible} record(s)`;
+
+            }
+
+        }
+
+
+        searchInput?.addEventListener(
+            "input",
+            filterAudit
+        );
+
+
+        actionFilter?.addEventListener(
+            "change",
+            filterAudit
+        );
+
+
+        entityFilter?.addEventListener(
+            "change",
+            filterAudit
+        );
+
+
+        /* =====================================================
+           MODAL
+        ===================================================== */
+
+        const modal =
+            $("auditDetailsModal");
+
+        const modalBody =
+            $("auditModalBody");
+
+
+        function closeAuditModal() {
+
+            if (modal) {
+
+                modal.style.display =
+                    "none";
+
+            }
+
+        }
+
+
+        $("auditModalClose")
+            ?.addEventListener(
+                "click",
+                closeAuditModal
+            );
+
+
+        $("auditModalCloseBottom")
+            ?.addEventListener(
+                "click",
+                closeAuditModal
+            );
+
+
+        modal?.addEventListener(
+            "click",
+            event => {
+
+                if (
+                    event.target ===
+                    modal
+                ) {
+
+                    closeAuditModal();
+
+                }
+
+            }
+        );
+
+
+        /* =====================================================
+           VIEW DETAILS
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".audit-view-btn"
+            )
+            .forEach(
+                button => {
+
+                    button.addEventListener(
+                        "click",
+                        () => {
+
+                            const index =
+                                Number(
+                                    button.dataset.index
+                                );
+
+
+                            const log =
+                                logs[index];
+
+
+                            if (!log) {
+                                return;
+                            }
+
+
+                            let metadataText =
+                                "{}";
+
+
+                            try {
+
+                                metadataText =
+                                    JSON.stringify(
+                                        log.metadata ||
+                                        {},
+                                        null,
+                                        2
+                                    );
+
+                            } catch {
+
+                                metadataText =
+                                    String(
+                                        log.metadata ||
+                                        {}
+                                    );
+
+                            }
+
+
+                            if (modalBody) {
+
+                                modalBody.innerHTML = `
+
+                                    <div
+                                        style="
+                                            display:grid;
+                                            grid-template-columns:
+                                                minmax(180px,220px)
+                                                1fr;
+                                            border:1px solid #e5e7eb;
+                                            border-radius:10px;
+                                            overflow:hidden;
+                                        "
+                                    >
+
+                                        <div class="audit-detail-label">
+                                            Log ID
+                                        </div>
+
+                                        <div class="audit-detail-value">
+                                            ${escapeHtml(
+                                                log.id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="audit-detail-label">
+                                            Time
+                                        </div>
+
+                                        <div class="audit-detail-value">
+                                            ${formatDateTime(
+                                                log.created_at
+                                            )}
+                                        </div>
+
+
+                                        <div class="audit-detail-label">
+                                            Action
+                                        </div>
+
+                                        <div class="audit-detail-value">
+
+                                            <span class="badge">
+                                                ${escapeHtml(
+                                                    log.action ||
+                                                    log.event ||
+                                                    log.name ||
+                                                    "—"
+                                                )}
+                                            </span>
+
+                                        </div>
+
+
+                                        <div class="audit-detail-label">
+                                            Kind
+                                        </div>
+
+                                        <div class="audit-detail-value">
+                                            ${escapeHtml(
+                                                log.kind ||
+                                                log.type ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="audit-detail-label">
+                                            User ID
+                                        </div>
+
+                                        <div class="audit-detail-value">
+                                            ${escapeHtml(
+                                                log.user_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="audit-detail-label">
+                                            User Email
+                                        </div>
+
+                                        <div class="audit-detail-value">
+                                            ${escapeHtml(
+                                                log.user_email ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="audit-detail-label">
+                                            Entity Type
+                                        </div>
+
+                                        <div class="audit-detail-value">
+                                            ${escapeHtml(
+                                                log.entity_type ||
+                                                log.entity ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="audit-detail-label">
+                                            Entity ID
+                                        </div>
+
+                                        <div class="audit-detail-value">
+                                            ${escapeHtml(
+                                                log.entity_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="audit-detail-label">
+                                            IP Address
+                                        </div>
+
+                                        <div class="audit-detail-value">
+                                            ${escapeHtml(
+                                                log.ip_address ||
+                                                log.ip ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="audit-detail-label">
+                                            User Agent
+                                        </div>
+
+                                        <div class="audit-detail-value">
+                                            ${escapeHtml(
+                                                log.user_agent ||
+                                                "—"
+                                            )}
+                                        </div>
+
+                                    </div>
+
+
+                                    <div
+                                        style="
+                                            margin-top:20px;
+                                        "
+                                    >
+
+                                        <h3>
+                                            Metadata
+                                        </h3>
+
+                                        <pre
+                                            style="
+                                                background:#f8fafc;
+                                                border:1px solid #e5e7eb;
+                                                border-radius:10px;
+                                                padding:15px;
+                                                max-height:400px;
+                                                overflow:auto;
+                                                white-space:pre-wrap;
+                                                word-break:break-word;
+                                                font-size:13px;
+                                            "
+                                        >${escapeHtml(
+                                            metadataText
+                                        )}</pre>
+
+                                    </div>
+
+
+                                    <style>
+
+                                        .audit-detail-label {
+                                            padding:12px;
+                                            background:#f9fafb;
+                                            border-bottom:1px solid #e5e7eb;
+                                            font-weight:600;
+                                        }
+
+                                        .audit-detail-value {
+                                            padding:12px;
+                                            border-bottom:1px solid #e5e7eb;
+                                            word-break:break-word;
+                                        }
+
+                                    </style>
+
+                                `;
+
+                            }
+
+
+                            if (modal) {
+
+                                modal.style.display =
+                                    "block";
+
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+
+    } catch (error) {
+
+        console.error(
+            "Audit section error:",
+            error
+        );
+
+
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div
+                    style="
+                        padding:25px;
+                        text-align:center;
+                    "
+                >
+
+                    <h2>
+                        Unable to load audit logs
+                    </h2>
+
+                    <p>
+                        ${escapeHtml(
+                            error?.message ||
+                            "An unexpected error occurred."
+                        )}
+                    </p>
+
+
+                    <button
+                        id="auditRetry"
+                        type="button"
+                    >
+                        Retry
+                    </button>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        $("auditRetry")
+            ?.addEventListener(
+                "click",
+                () =>
+                    loadAudit()
+            );
+
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
 /* =========================================================
    SETTINGS
 ========================================================= */
