@@ -7568,8 +7568,8 @@ async function loadSettings() {
                     >
 
                         <strong>
-                            Choose Logo
-                        </strong>
+                        Logo
+                       </strong>
 
                         <input
                             id="logoFile"
@@ -7581,9 +7581,9 @@ async function loadSettings() {
                             "
                         >
 
-                        <small>
-                            Select an image from your computer.
-                        </small>
+                       <small>
+    Choose a logo from your computer. PNG, JPG, WEBP or SVG, maximum 3 MB.
+</small>
 
                     </label>
 
@@ -7929,37 +7929,122 @@ async function loadSettings() {
         };
 
 
-    $("saveBranding").onclick =
-        async () => {
+   $("saveBranding").onclick =
+    async () => {
 
-            const brandName =
-                $("brandName")
-                    .value
-                    .trim();
+        const button =
+            $("saveBranding");
 
-            const logoUrl =
-                $("logoUrl")
-                    .value
-                    .trim();
+        const brandName =
+            $("brandName")
+                ?.value
+                ?.trim() ||
+            "";
 
-            const supportEmail =
-                $("supportEmail")
-                    .value
-                    .trim();
+        const logoUrl =
+            $("logoUrl")
+                ?.value
+                ?.trim() ||
+            "";
 
-            const primaryColor =
-                $("primaryColor")
-                    .value;
+        const primaryColor =
+            $("primaryColor")
+                ?.value
+                ?.trim() ||
+            "";
 
-            const accentColor =
-                $("accentColor")
-                    .value;
+        const accentColor =
+            $("accentColor")
+                ?.value
+                ?.trim() ||
+            "";
+
+        const supportEmail =
+            $("supportEmail")
+                ?.value
+                ?.trim() ||
+            "";
+
+        const logoFile =
+            $("logoFile")
+                ?.files?.[0] ||
+            null;
 
 
-            if (!brandName) {
+        /* =====================================================
+           VALIDATION
+        ===================================================== */
+
+        if (!brandName) {
+
+            showMessage(
+                "Brand name is required.",
+                "error"
+            );
+
+            return;
+        }
+
+
+        if (
+            !/^#[0-9a-fA-F]{6}$/
+                .test(
+                    primaryColor
+                )
+        ) {
+
+            showMessage(
+                "Primary color must be a valid HEX color.",
+                "error"
+            );
+
+            return;
+        }
+
+
+        if (
+            !/^#[0-9a-fA-F]{6}$/
+                .test(
+                    accentColor
+                )
+        ) {
+
+            showMessage(
+                "Accent color must be a valid HEX color.",
+                "error"
+            );
+
+            return;
+        }
+
+
+        if (
+            supportEmail &&
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/
+                .test(
+                    supportEmail
+                )
+        ) {
+
+            showMessage(
+                "Please enter a valid support email.",
+                "error"
+            );
+
+            return;
+        }
+
+
+        if (logoFile) {
+
+            if (
+                !logoFile.type.startsWith(
+                    "image/"
+                )
+            ) {
 
                 showMessage(
-                    "Brand name is required.",
+                    "Please select an image file.",
                     "error"
                 );
 
@@ -7967,10 +8052,25 @@ async function loadSettings() {
             }
 
 
-            try {
+            if (
+                logoFile.size >
+                3 * 1024 * 1024
+            ) {
 
-                const button =
-                    $("saveBranding");
+                showMessage(
+                    "Logo must be 3 MB or smaller.",
+                    "error"
+                );
+
+                return;
+            }
+
+        }
+
+
+        try {
+
+            if (button) {
 
                 button.disabled =
                     true;
@@ -7978,96 +8078,299 @@ async function loadSettings() {
                 button.textContent =
                     "Saving...";
 
+            }
 
-                await adminAction(
-                    "save_branding",
-                    {
-                        branding: {
 
-                            brand_name:
-                                brandName,
+            showMessage(
+                "Saving branding settings..."
+            );
 
-                            logo_url:
-                                logoUrl,
 
-                            support_email:
-                                supportEmail,
+            const current =
+                await getSession();
 
-                            primary_color:
-                                primaryColor,
 
-                            accent_color:
-                                accentColor
+            if (!current) {
+
+                throw new Error(
+                    "Your session has expired. Please log in again."
+                );
+
+            }
+
+
+            /* =================================================
+               CONVERT SELECTED LOGO TO DATA URL
+            ================================================= */
+
+            let logoDataUrl =
+                "";
+
+
+            if (logoFile) {
+
+                logoDataUrl =
+                    await new Promise(
+                        (
+                            resolve,
+                            reject
+                        ) => {
+
+                            const reader =
+                                new FileReader();
+
+
+                            reader.onload =
+                                () => {
+
+                                    resolve(
+                                        String(
+                                            reader.result ||
+                                            ""
+                                        )
+                                    );
+
+                                };
+
+
+                            reader.onerror =
+                                () => {
+
+                                    reject(
+                                        new Error(
+                                            "Unable to read the selected logo."
+                                        )
+                                    );
+
+                                };
+
+
+                            reader.readAsDataURL(
+                                logoFile
+                            );
+
                         }
+                    );
+
+            }
+
+
+            /* =================================================
+               SETTINGS ENDPOINT
+            ================================================= */
+
+            const url =
+                `${window.OBSEDIAN_CONFIG.SUPABASE_URL}` +
+                `/functions/v1/admin?section=settings`;
+
+
+            const response =
+                await fetch(
+                    url,
+                    {
+                        method:
+                            "POST",
+
+                        headers: {
+
+                            Authorization:
+                                `Bearer ${current.access_token}`,
+
+                            apikey:
+                                window.OBSEDIAN_CONFIG
+                                    .SUPABASE_PUBLISHABLE_KEY,
+
+                            "Content-Type":
+                                "application/json"
+
+                        },
+
+                        body:
+                            JSON.stringify(
+                                {
+                                    action:
+                                        "update_branding",
+
+                                    branding: {
+
+                                        brand_name:
+                                            brandName,
+
+                                        logo_url:
+                                            logoUrl,
+
+                                        primary_color:
+                                            primaryColor,
+
+                                        accent_color:
+                                            accentColor,
+
+                                        support_email:
+                                            supportEmail
+
+                                    },
+
+                                    logo_data_url:
+                                        logoDataUrl
+
+                                }
+                            )
+
                     }
                 );
 
 
-                showMessage(
-                    "Branding saved successfully."
-                );
+            const raw =
+                await response.text();
 
 
-                await loadSettings();
+            let data =
+                {};
 
-            } catch (error) {
+            try {
 
-                console.error(
-                    error
-                );
+                data =
+                    raw
+                        ? JSON.parse(
+                            raw
+                        )
+                        : {};
 
-                showMessage(
-                    error.message ||
-                    "Unable to save branding.",
-                    "error"
-                );
+            } catch {
 
-            } finally {
+                data = {
+                    error:
+                        raw ||
+                        "Invalid server response."
+                };
 
-                const button =
-                    $("saveBranding");
-
-                if (button) {
-
-                    button.disabled =
-                        false;
-
-                    button.textContent =
-                        "Save Branding";
-                }
             }
-        };
 
 
-    $("resetBranding").onclick =
-        () => {
+            if (!response.ok) {
 
-            $("brandName").value =
-                "Obsedian.Space";
+                throw new Error(
+                    data?.error ||
+                    data?.message ||
+                    `Unable to save settings (${response.status})`
+                );
 
-            $("logoUrl").value =
-                "";
+            }
 
-            $("supportEmail").value =
-                "";
 
-            $("primaryColor").value =
-                "#7c3aed";
+            if (data?.error) {
 
-            $("primaryColorText").value =
-                "#7c3aed";
+                throw new Error(
+                    data.error
+                );
 
-            $("accentColor").value =
-                "#f59e0b";
+            }
 
-            $("accentColorText").value =
-                "#f59e0b";
+
+            /* =================================================
+               SUCCESS
+            ================================================= */
+
+            showMessage(
+                "Branding settings saved successfully."
+            );
+
+
+            if (
+                data?.setting?.value
+            ) {
+
+                currentBranding =
+                    data.setting.value;
+
+            } else {
+
+                currentBranding = {
+
+                    brand_name:
+                        brandName,
+
+                    logo_url:
+                        data?.setting
+                            ?.value
+                            ?.logo_url ||
+                        logoUrl,
+
+                    primary_color:
+                        primaryColor,
+
+                    accent_color:
+                        accentColor,
+
+                    support_email:
+                        supportEmail
+
+                };
+
+            }
+
+
+            /* =================================================
+               UPDATE LOGO URL AFTER UPLOAD
+            ================================================= */
+
+            if (
+                data?.setting
+                    ?.value
+                    ?.logo_url
+            ) {
+
+                $("logoUrl").value =
+                    data.setting
+                        .value
+                        .logo_url;
+
+            }
+
 
             renderLogoPreview();
-        };
-}
 
 
+            /*
+             * Reload settings from database
+             * so the displayed values are guaranteed
+             * to match the saved record.
+             */
+
+            await loadSettings();
+
+
+        } catch (error) {
+
+            console.error(
+                "Save branding error:",
+                error
+            );
+
+
+            showMessage(
+                error?.message ||
+                "Unable to save branding settings.",
+                "error"
+            );
+
+
+        } finally {
+
+            if (button) {
+
+                button.disabled =
+                    false;
+
+                button.textContent =
+                    "Save Branding";
+
+            }
+
+        }
+
+    };
+    
 /* =========================================================
    LOGO PREVIEW
 ========================================================= */
