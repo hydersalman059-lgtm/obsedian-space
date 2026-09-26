@@ -1984,52 +1984,90 @@ async function openUserManager(
 
 async function loadWebsites() {
 
-    loading(
-        "Loading websites..."
-    );
+    loading("Loading websites...");
 
+    try {
 
-    const data =
-        await api(
-            "websites"
-        );
+        const data = await api("websites");
 
+        const websites = Array.isArray(data.websites)
+            ? data.websites
+            : [];
 
-    const websites =
-        data.websites || [];
+        $("content").innerHTML = `
 
+            <div class="card">
 
-    $("content").innerHTML = `
+                <div class="admin-header">
 
-        <div class="card">
+                    <div>
+                        <h2>Websites</h2>
 
-            <div class="admin-header">
+                        <p>
+                            ${websites.length}
+                            website record(s).
+                        </p>
+                    </div>
 
-                <div>
-
-                    <h2>
-                        Websites
-                    </h2>
-
-                    <p>
-                        ${websites.length}
-                        website record(s).
-                    </p>
+                    <button
+                        id="websitesRefresh"
+                        type="button"
+                    >
+                        Refresh
+                    </button>
 
                 </div>
 
-                <button
-                    id="websitesRefresh"
-                >
-                    Refresh
-                </button>
 
-            </div>
+                ${
+                    websites.length
+                        ? `
+
+                    <div style="
+                        display:flex;
+                        gap:12px;
+                        flex-wrap:wrap;
+                        margin-bottom:18px;
+                    ">
+
+                        <input
+                            id="websiteSearch"
+                            class="search-box"
+                            type="search"
+                            placeholder="Search website name, URL or status..."
+                            autocomplete="off"
+                        >
+
+                        <select
+                            id="websiteStatusFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:160px;
+                            "
+                        >
+                            <option value="">All Statuses</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                            <option value="pending">Pending</option>
+                            <option value="error">Error</option>
+                        </select>
+
+                    </div>
 
 
-            ${
-                websites.length
-                    ? `
+                    <div
+                        id="websiteResultCount"
+                        style="
+                            margin-bottom:12px;
+                            color:#6b7280;
+                            font-size:14px;
+                        "
+                    >
+                        Showing ${websites.length} website(s)
+                    </div>
+
 
                     <div class="admin-table-wrapper">
 
@@ -2039,104 +2077,135 @@ async function loadWebsites() {
 
                                 <tr>
 
-                                    <th>
-                                        Name
-                                    </th>
+                                    <th>Name</th>
 
-                                    <th>
-                                        URL
-                                    </th>
+                                    <th>URL</th>
 
-                                    <th>
-                                        User
-                                    </th>
+                                    <th>User ID</th>
 
-                                    <th>
-                                        Status
-                                    </th>
+                                    <th>Status</th>
 
-                                    <th>
-                                        Crawl Frequency
-                                    </th>
+                                    <th>Crawl Frequency</th>
 
-                                    <th>
-                                        Last Crawled
-                                    </th>
+                                    <th>Last Crawled</th>
 
-                                    <th>
-                                        Created
-                                    </th>
+                                    <th>Created</th>
+
+                                    <th>Action</th>
 
                                 </tr>
 
                             </thead>
 
-                            <tbody>
+                            <tbody id="websitesTableBody">
 
-                                ${websites
-                                    .map(
-                                        site => `
+                                ${websites.map((site, index) => `
 
-                                        <tr>
+                                    <tr
+                                        class="website-row"
+                                        data-index="${index}"
+                                        data-name="${escapeHtml(
+                                            String(site.name || "")
+                                        ).toLowerCase()}"
+                                        data-url="${escapeHtml(
+                                            String(site.url || "")
+                                        ).toLowerCase()}"
+                                        data-status="${escapeHtml(
+                                            String(site.status || "")
+                                        ).toLowerCase()}"
+                                    >
 
-                                            <td>
+                                        <td>
+                                            <strong>
                                                 ${escapeHtml(
-                                                    site.name ||
-                                                    "—"
+                                                    site.name || "Untitled Website"
                                                 )}
-                                            </td>
+                                            </strong>
+                                        </td>
 
-                                            <td>
+
+                                        <td>
+
+                                            ${
+                                                site.url
+                                                    ? `
+                                                        <a
+                                                            href="${escapeHtml(site.url)}"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style="
+                                                                color:#7c3aed;
+                                                                text-decoration:none;
+                                                                word-break:break-all;
+                                                            "
+                                                        >
+                                                            ${escapeHtml(site.url)}
+                                                        </a>
+                                                    `
+                                                    : "—"
+                                            }
+
+                                        </td>
+
+
+                                        <td>
+                                            <small>
                                                 ${escapeHtml(
-                                                    site.url ||
-                                                    "—"
+                                                    site.user_id || "—"
                                                 )}
-                                            </td>
+                                            </small>
+                                        </td>
 
-                                            <td>
+
+                                        <td>
+
+                                            <span class="badge">
+
                                                 ${escapeHtml(
-                                                    site.user_id ||
-                                                    "—"
+                                                    site.status || "—"
                                                 )}
-                                            </td>
 
-                                            <td>
+                                            </span>
 
-                                                <span class="badge">
+                                        </td>
 
-                                                    ${escapeHtml(
-                                                        site.status ||
-                                                        "—"
-                                                    )}
 
-                                                </span>
+                                        <td>
+                                            ${escapeHtml(
+                                                site.crawl_frequency || "—"
+                                            )}
+                                        </td>
 
-                                            </td>
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    site.crawl_frequency ||
-                                                    "—"
-                                                )}
-                                            </td>
+                                        <td>
+                                            ${formatDate(
+                                                site.last_crawled_at
+                                            )}
+                                        </td>
 
-                                            <td>
-                                                ${formatDate(
-                                                    site.last_crawled_at
-                                                )}
-                                            </td>
 
-                                            <td>
-                                                ${formatDateOnly(
-                                                    site.created_at
-                                                )}
-                                            </td>
+                                        <td>
+                                            ${formatDateOnly(
+                                                site.created_at
+                                            )}
+                                        </td>
 
-                                        </tr>
 
-                                    `
-                                    )
-                                    .join("")}
+                                        <td>
+
+                                            <button
+                                                type="button"
+                                                class="website-view-btn"
+                                                data-index="${index}"
+                                            >
+                                                View
+                                            </button>
+
+                                        </td>
+
+                                    </tr>
+
+                                `).join("")}
 
                             </tbody>
 
@@ -2145,20 +2214,596 @@ async function loadWebsites() {
                     </div>
 
                 `
-                    : `
+                        : `
+
                     <div class="empty">
-                        No websites found.
+
+                        <h3>No websites found</h3>
+
+                        <p>
+                            No website records are currently available.
+                        </p>
+
                     </div>
+
                 `
+                }
+
+            </div>
+
+
+            <!-- WEBSITE DETAILS MODAL -->
+
+            <div
+                id="websiteDetailsModal"
+                style="
+                    display:none;
+                    position:fixed;
+                    inset:0;
+                    background:rgba(0,0,0,.55);
+                    z-index:9999;
+                    padding:20px;
+                    overflow:auto;
+                "
+            >
+
+                <div
+                    style="
+                        max-width:720px;
+                        margin:60px auto;
+                        background:#fff;
+                        border-radius:14px;
+                        padding:24px;
+                        box-shadow:0 20px 60px rgba(0,0,0,.25);
+                    "
+                >
+
+                    <div
+                        style="
+                            display:flex;
+                            justify-content:space-between;
+                            align-items:center;
+                            gap:15px;
+                            margin-bottom:20px;
+                        "
+                    >
+
+                        <h2
+                            id="websiteModalTitle"
+                            style="margin:0;"
+                        >
+                            Website Details
+                        </h2>
+
+                        <button
+                            id="websiteModalClose"
+                            type="button"
+                        >
+                            ×
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="websiteModalBody"
+                    ></div>
+
+
+                    <div
+                        style="
+                            margin-top:24px;
+                            display:flex;
+                            justify-content:flex-end;
+                        "
+                    >
+
+                        <button
+                            id="websiteModalCloseBottom"
+                            type="button"
+                        >
+                            Close
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        /* =====================================================
+           REFRESH
+        ===================================================== */
+
+        const refreshButton =
+            $("websitesRefresh");
+
+        if (refreshButton) {
+
+            refreshButton.onclick =
+                () => loadWebsites();
+
+        }
+
+
+        /* =====================================================
+           SEARCH + STATUS FILTER
+        ===================================================== */
+
+        const searchInput =
+            $("websiteSearch");
+
+        const statusFilter =
+            $("websiteStatusFilter");
+
+        const resultCount =
+            $("websiteResultCount");
+
+
+        function filterWebsites() {
+
+            const search =
+                String(
+                    searchInput?.value || ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+            const status =
+                String(
+                    statusFilter?.value || ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const rows =
+                document.querySelectorAll(
+                    ".website-row"
+                );
+
+
+            let visibleCount = 0;
+
+
+            rows.forEach(row => {
+
+                const name =
+                    row.dataset.name || "";
+
+                const url =
+                    row.dataset.url || "";
+
+                const rowStatus =
+                    row.dataset.status || "";
+
+
+                const matchesSearch =
+                    !search ||
+                    name.includes(search) ||
+                    url.includes(search) ||
+                    rowStatus.includes(search);
+
+
+                const matchesStatus =
+                    !status ||
+                    rowStatus === status;
+
+
+                const visible =
+                    matchesSearch &&
+                    matchesStatus;
+
+
+                row.style.display =
+                    visible
+                        ? ""
+                        : "none";
+
+
+                if (visible) {
+                    visibleCount++;
+                }
+
+            });
+
+
+            if (resultCount) {
+
+                resultCount.textContent =
+                    `Showing ${visibleCount} website(s)`;
+
             }
 
-        </div>
-    `;
+        }
 
 
-    $("websitesRefresh").onclick =
-        () =>
-            loadWebsites();
+        if (searchInput) {
+
+            searchInput.addEventListener(
+                "input",
+                filterWebsites
+            );
+
+        }
+
+
+        if (statusFilter) {
+
+            statusFilter.addEventListener(
+                "change",
+                filterWebsites
+            );
+
+        }
+
+
+        /* =====================================================
+           MODAL
+        ===================================================== */
+
+        const modal =
+            $("websiteDetailsModal");
+
+        const modalBody =
+            $("websiteModalBody");
+
+        const modalTitle =
+            $("websiteModalTitle");
+
+
+        function closeWebsiteModal() {
+
+            if (modal) {
+
+                modal.style.display =
+                    "none";
+
+            }
+
+        }
+
+
+        const closeTop =
+            $("websiteModalClose");
+
+        const closeBottom =
+            $("websiteModalCloseBottom");
+
+
+        if (closeTop) {
+
+            closeTop.onclick =
+                closeWebsiteModal;
+
+        }
+
+
+        if (closeBottom) {
+
+            closeBottom.onclick =
+                closeWebsiteModal;
+
+        }
+
+
+        if (modal) {
+
+            modal.addEventListener(
+                "click",
+                event => {
+
+                    if (
+                        event.target === modal
+                    ) {
+
+                        closeWebsiteModal();
+
+                    }
+
+                }
+            );
+
+        }
+
+
+        /* =====================================================
+           VIEW WEBSITE
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".website-view-btn"
+            )
+            .forEach(button => {
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
+
+
+                        const site =
+                            websites[index];
+
+
+                        if (!site) {
+                            return;
+                        }
+
+
+                        if (modalTitle) {
+
+                            modalTitle.textContent =
+                                site.name ||
+                                "Website Details";
+
+                        }
+
+
+                        if (modalBody) {
+
+                            modalBody.innerHTML = `
+
+                                <div
+                                    style="
+                                        display:grid;
+                                        grid-template-columns:
+                                            minmax(150px,180px)
+                                            1fr;
+                                        gap:0;
+                                        border:1px solid #e5e7eb;
+                                        border-radius:10px;
+                                        overflow:hidden;
+                                    "
+                                >
+
+                                    <div style="
+                                        padding:12px;
+                                        background:#f9fafb;
+                                        font-weight:600;
+                                    ">
+                                        Website ID
+                                    </div>
+
+                                    <div style="
+                                        padding:12px;
+                                        word-break:break-all;
+                                    ">
+                                        ${escapeHtml(
+                                            site.id || "—"
+                                        )}
+                                    </div>
+
+
+                                    <div style="
+                                        padding:12px;
+                                        background:#f9fafb;
+                                        font-weight:600;
+                                    ">
+                                        Name
+                                    </div>
+
+                                    <div style="padding:12px;">
+                                        ${escapeHtml(
+                                            site.name ||
+                                            "—"
+                                        )}
+                                    </div>
+
+
+                                    <div style="
+                                        padding:12px;
+                                        background:#f9fafb;
+                                        font-weight:600;
+                                    ">
+                                        URL
+                                    </div>
+
+                                    <div style="
+                                        padding:12px;
+                                        word-break:break-all;
+                                    ">
+
+                                        ${
+                                            site.url
+                                                ? `
+                                                    <a
+                                                        href="${escapeHtml(site.url)}"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                    >
+                                                        ${escapeHtml(site.url)}
+                                                    </a>
+                                                `
+                                                : "—"
+                                        }
+
+                                    </div>
+
+
+                                    <div style="
+                                        padding:12px;
+                                        background:#f9fafb;
+                                        font-weight:600;
+                                    ">
+                                        User ID
+                                    </div>
+
+                                    <div style="
+                                        padding:12px;
+                                        word-break:break-all;
+                                    ">
+                                        ${escapeHtml(
+                                            site.user_id ||
+                                            "—"
+                                        )}
+                                    </div>
+
+
+                                    <div style="
+                                        padding:12px;
+                                        background:#f9fafb;
+                                        font-weight:600;
+                                    ">
+                                        Status
+                                    </div>
+
+                                    <div style="padding:12px;">
+                                        <span class="badge">
+                                            ${escapeHtml(
+                                                site.status ||
+                                                "—"
+                                            )}
+                                        </span>
+                                    </div>
+
+
+                                    <div style="
+                                        padding:12px;
+                                        background:#f9fafb;
+                                        font-weight:600;
+                                    ">
+                                        Crawl Frequency
+                                    </div>
+
+                                    <div style="padding:12px;">
+                                        ${escapeHtml(
+                                            site.crawl_frequency ||
+                                            "—"
+                                        )}
+                                    </div>
+
+
+                                    <div style="
+                                        padding:12px;
+                                        background:#f9fafb;
+                                        font-weight:600;
+                                    ">
+                                        Last Crawled
+                                    </div>
+
+                                    <div style="padding:12px;">
+                                        ${formatDate(
+                                            site.last_crawled_at
+                                        )}
+                                    </div>
+
+
+                                    <div style="
+                                        padding:12px;
+                                        background:#f9fafb;
+                                        font-weight:600;
+                                    ">
+                                        Created
+                                    </div>
+
+                                    <div style="padding:12px;">
+                                        ${formatDate(
+                                            site.created_at
+                                        )}
+                                    </div>
+
+
+                                    <div style="
+                                        padding:12px;
+                                        background:#f9fafb;
+                                        font-weight:600;
+                                    ">
+                                        Updated
+                                    </div>
+
+                                    <div style="padding:12px;">
+                                        ${formatDate(
+                                            site.updated_at
+                                        )}
+                                    </div>
+
+                                </div>
+
+                            `;
+
+                        }
+
+
+                        if (modal) {
+
+                            modal.style.display =
+                                "block";
+
+                        }
+
+                    }
+                );
+
+            });
+
+
+    } catch (error) {
+
+        console.error(
+            "Websites section error:",
+            error
+        );
+
+
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div
+                    style="
+                        padding:25px;
+                        text-align:center;
+                    "
+                >
+
+                    <h2>
+                        Unable to load websites
+                    </h2>
+
+                    <p>
+                        ${
+                            escapeHtml(
+                                error?.message ||
+                                "An unexpected error occurred."
+                            )
+                        }
+                    </p>
+
+                    <button
+                        id="websitesRetry"
+                        type="button"
+                    >
+                        Retry
+                    </button>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        const retry =
+            $("websitesRetry");
+
+        if (retry) {
+
+            retry.onclick =
+                () => loadWebsites();
+
+        }
+
+    }
+
 }
 
 
