@@ -8489,29 +8489,60 @@ async function logout() {
 
 /* =========================================================
    NAV BUTTON EVENTS
+   Robust delegated navigation
 ========================================================= */
 
-document
-    .querySelectorAll(
-        ".admin-nav button"
-    )
-    .forEach(
-        button => {
+document.addEventListener(
+    "click",
+    event => {
 
-            button.addEventListener(
-                "click",
-                () => {
-
-                    loadSection(
-                        button.dataset.section
-                    );
-
-                }
+        const button =
+            event.target.closest(
+                ".admin-nav button"
             );
 
+        if (!button) {
+            return;
         }
-    );
 
+
+        /*
+         * Prevent the button from submitting
+         * any surrounding form.
+         */
+
+        event.preventDefault();
+
+        event.stopPropagation();
+
+
+        const section =
+            button.dataset.section;
+
+
+        if (!section) {
+
+            console.warn(
+                "Admin navigation button has no data-section:",
+                button
+            );
+
+            return;
+        }
+
+
+        console.log(
+            "Admin navigation:",
+            section
+        );
+
+
+        loadSection(
+            section
+        );
+
+    }
+);
 
 /* =========================================================
    LOGOUT BUTTON
