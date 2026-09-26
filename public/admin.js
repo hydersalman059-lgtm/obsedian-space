@@ -5306,7 +5306,7 @@ async function loadApprovals() {
 
 
 /* =========================================================
-   SUPPORT
+   SUPPORT TICKETS
 ========================================================= */
 
 async function loadSupport() {
@@ -5315,50 +5315,183 @@ async function loadSupport() {
         "Loading support tickets..."
     );
 
+    try {
 
-    const data =
-        await api(
-            "support"
-        );
+        const data =
+            await api(
+                "support"
+            );
+
+        const tickets =
+            Array.isArray(
+                data?.tickets
+            )
+                ? data.tickets
+                : Array.isArray(
+                    data?.support_tickets
+                )
+                    ? data.support_tickets
+                    : [];
 
 
-    const tickets =
-        data.tickets ||
-        data.support_tickets ||
-        [];
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div class="admin-header">
+
+                    <div>
+
+                        <h2>
+                            Support Tickets
+                        </h2>
+
+                        <p>
+                            ${tickets.length}
+                            ticket(s).
+                        </p>
+
+                    </div>
 
 
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <div class="admin-header">
-
-                <div>
-
-                    <h2>
-                        Support Tickets
-                    </h2>
-
-                    <p>
-                        ${tickets.length}
-                        ticket(s).
-                    </p>
+                    <button
+                        id="supportRefresh"
+                        type="button"
+                    >
+                        Refresh
+                    </button>
 
                 </div>
 
-                <button
-                    id="supportRefresh"
-                >
-                    Refresh
-                </button>
 
-            </div>
+                ${
+                    tickets.length
+                        ? `
+
+                    <!-- FILTERS -->
+
+                    <div
+                        style="
+                            display:flex;
+                            gap:12px;
+                            flex-wrap:wrap;
+                            margin-bottom:18px;
+                        "
+                    >
+
+                        <input
+                            id="supportSearch"
+                            class="search-box"
+                            type="search"
+                            placeholder="Search subject, user, ticket ID..."
+                            autocomplete="off"
+                        >
 
 
-            ${
-                tickets.length
-                    ? `
+                        <select
+                            id="supportStatusFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:150px;
+                            "
+                        >
+
+                            <option value="">
+                                All Statuses
+                            </option>
+
+                            ${[
+                                ...new Set(
+                                    tickets
+                                        .map(
+                                            ticket =>
+                                                String(
+                                                    ticket.status ||
+                                                    ""
+                                                ).trim()
+                                        )
+                                        .filter(Boolean)
+                                )
+                            ]
+                                .sort()
+                                .map(
+                                    status => `
+                                        <option
+                                            value="${escapeHtml(
+                                                status.toLowerCase()
+                                            )}"
+                                        >
+                                            ${escapeHtml(status)}
+                                        </option>
+                                    `
+                                )
+                                .join("")}
+
+                        </select>
+
+
+                        <select
+                            id="supportPriorityFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:150px;
+                            "
+                        >
+
+                            <option value="">
+                                All Priorities
+                            </option>
+
+                            ${[
+                                ...new Set(
+                                    tickets
+                                        .map(
+                                            ticket =>
+                                                String(
+                                                    ticket.priority ||
+                                                    ""
+                                                ).trim()
+                                        )
+                                        .filter(Boolean)
+                                )
+                            ]
+                                .sort()
+                                .map(
+                                    priority => `
+                                        <option
+                                            value="${escapeHtml(
+                                                priority.toLowerCase()
+                                            )}"
+                                        >
+                                            ${escapeHtml(priority)}
+                                        </option>
+                                    `
+                                )
+                                .join("")}
+
+                        </select>
+
+                    </div>
+
+
+                    <div
+                        id="supportResultCount"
+                        style="
+                            margin-bottom:12px;
+                            color:#6b7280;
+                            font-size:14px;
+                        "
+                    >
+                        Showing ${tickets.length}
+                        ticket(s)
+                    </div>
+
+
+                    <!-- TABLE -->
 
                     <div class="admin-table-wrapper">
 
@@ -5377,6 +5510,10 @@ async function loadSupport() {
                                     </th>
 
                                     <th>
+                                        Category
+                                    </th>
+
+                                    <th>
                                         Status
                                     </th>
 
@@ -5392,68 +5529,184 @@ async function loadSupport() {
                                         Updated
                                     </th>
 
+                                    <th>
+                                        Action
+                                    </th>
+
                                 </tr>
 
                             </thead>
+
 
                             <tbody>
 
                                 ${tickets
                                     .map(
-                                        ticket => `
+                                        (
+                                            ticket,
+                                            index
+                                        ) => {
 
-                                        <tr>
+                                            const searchable =
+                                                [
+                                                    ticket.id,
+                                                    ticket.user_id,
+                                                    ticket.subject,
+                                                    ticket.title,
+                                                    ticket.category,
+                                                    ticket.status,
+                                                    ticket.priority,
+                                                    ticket.message
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(" ")
+                                                    .toLowerCase();
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    ticket.subject ||
-                                                    ticket.title ||
-                                                    "—"
-                                                )}
-                                            </td>
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    ticket.user_id ||
-                                                    "—"
-                                                )}
-                                            </td>
+                                            const status =
+                                                String(
+                                                    ticket.status ||
+                                                    ""
+                                                )
+                                                    .trim()
+                                                    .toLowerCase();
 
-                                            <td>
 
-                                                <span class="badge">
-
-                                                    ${escapeHtml(
-                                                        ticket.status ||
-                                                        "—"
-                                                    )}
-
-                                                </span>
-
-                                            </td>
-
-                                            <td>
-                                                ${escapeHtml(
+                                            const priority =
+                                                String(
                                                     ticket.priority ||
-                                                    "—"
-                                                )}
-                                            </td>
+                                                    ""
+                                                )
+                                                    .trim()
+                                                    .toLowerCase();
 
-                                            <td>
-                                                ${formatDate(
-                                                    ticket.created_at
-                                                )}
-                                            </td>
 
-                                            <td>
-                                                ${formatDate(
-                                                    ticket.updated_at
-                                                )}
-                                            </td>
+                                            return `
 
-                                        </tr>
+                                                <tr
+                                                    class="support-row"
+                                                    data-search="${escapeHtml(
+                                                        searchable
+                                                    )}"
+                                                    data-status="${escapeHtml(
+                                                        status
+                                                    )}"
+                                                    data-priority="${escapeHtml(
+                                                        priority
+                                                    )}"
+                                                >
 
-                                    `
+                                                    <td>
+
+                                                        <strong>
+                                                            ${escapeHtml(
+                                                                ticket.subject ||
+                                                                ticket.title ||
+                                                                "—"
+                                                            )}
+                                                        </strong>
+
+                                                        ${
+                                                            ticket.id
+                                                                ? `
+                                                                    <br>
+
+                                                                    <small
+                                                                        style="
+                                                                            color:#6b7280;
+                                                                            word-break:break-all;
+                                                                        "
+                                                                    >
+                                                                        ${escapeHtml(
+                                                                            ticket.id
+                                                                        )}
+                                                                    </small>
+                                                                `
+                                                                : ""
+                                                        }
+
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <small
+                                                            style="
+                                                                word-break:break-all;
+                                                            "
+                                                        >
+                                                            ${escapeHtml(
+                                                                ticket.user_email ||
+                                                                ticket.email ||
+                                                                ticket.user_id ||
+                                                                "—"
+                                                            )}
+                                                        </small>
+
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            ticket.category ||
+                                                            "—"
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <span
+                                                            class="badge"
+                                                        >
+                                                            ${escapeHtml(
+                                                                ticket.status ||
+                                                                "—"
+                                                            )}
+                                                        </span>
+
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            ticket.priority ||
+                                                            "—"
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${formatDate(
+                                                            ticket.created_at
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${formatDate(
+                                                            ticket.updated_at
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <button
+                                                            type="button"
+                                                            class="support-view-btn"
+                                                            data-index="${index}"
+                                                        >
+                                                            View
+                                                        </button>
+
+                                                    </td>
+
+                                                </tr>
+
+                                            `;
+
+                                        }
                                     )
                                     .join("")}
 
@@ -5464,190 +5717,599 @@ async function loadSupport() {
                     </div>
 
                 `
-                    : `
+                        : `
+
                     <div class="empty">
-                        No support tickets found.
+
+                        <h3>
+                            No support tickets found
+                        </h3>
+
+                        <p>
+                            There are currently no support tickets.
+                        </p>
+
                     </div>
+
                 `
-            }
-
-        </div>
-    `;
-
-
-    $("supportRefresh").onclick =
-        () =>
-            loadSupport();
-}
-
-
-/* =========================================================
-   AUDIT
-========================================================= */
-
-async function loadAudit() {
-
-    loading(
-        "Loading audit logs..."
-    );
-
-
-    const data =
-        await api(
-            "audit"
-        );
-
-
-    const logs =
-        data.logs || [];
-
-
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <div class="admin-header">
-
-                <div>
-
-                    <h2>
-                        Audit Logs
-                    </h2>
-
-                    <p>
-                        Showing ${logs.length}
-                        record(s).
-                    </p>
-
-                </div>
-
-                <button
-                    id="auditRefresh"
-                >
-                    Refresh
-                </button>
+                }
 
             </div>
 
 
-            ${
-                logs.length
-                    ? `
+            <!-- SUPPORT DETAILS MODAL -->
 
-                    <div class="admin-table-wrapper">
+            <div
+                id="supportDetailsModal"
+                style="
+                    display:none;
+                    position:fixed;
+                    inset:0;
+                    background:rgba(0,0,0,.55);
+                    z-index:9999;
+                    padding:20px;
+                    overflow:auto;
+                "
+            >
 
-                        <table class="admin-table">
+                <div
+                    style="
+                        max-width:800px;
+                        margin:50px auto;
+                        background:#fff;
+                        border-radius:14px;
+                        padding:24px;
+                        box-shadow:0 20px 60px rgba(0,0,0,.25);
+                    "
+                >
 
-                            <thead>
+                    <div
+                        style="
+                            display:flex;
+                            align-items:center;
+                            justify-content:space-between;
+                            gap:15px;
+                            margin-bottom:20px;
+                        "
+                    >
 
-                                <tr>
+                        <h2
+                            style="margin:0;"
+                        >
+                            Support Ticket
+                        </h2>
 
-                                    <th>
-                                        Time
-                                    </th>
 
-                                    <th>
-                                        Action
-                                    </th>
-
-                                    <th>
-                                        User
-                                    </th>
-
-                                    <th>
-                                        Entity
-                                    </th>
-
-                                    <th>
-                                        Metadata
-                                    </th>
-
-                                </tr>
-
-                            </thead>
-
-                            <tbody>
-
-                                ${logs
-                                    .map(
-                                        log => `
-
-                                        <tr>
-
-                                            <td>
-                                                ${formatDate(
-                                                    log.created_at
-                                                )}
-                                            </td>
-
-                                            <td>
-
-                                                <span class="badge">
-
-                                                    ${escapeHtml(
-                                                        log.action ||
-                                                        log.event ||
-                                                        "—"
-                                                    )}
-
-                                                </span>
-
-                                            </td>
-
-                                            <td>
-                                                ${escapeHtml(
-                                                    log.user_id ||
-                                                    "—"
-                                                )}
-                                            </td>
-
-                                            <td>
-                                                ${escapeHtml(
-                                                    log.entity_id ||
-                                                    log.entity_type ||
-                                                    "—"
-                                                )}
-                                            </td>
-
-                                            <td>
-                                                ${escapeHtml(
-                                                    JSON.stringify(
-                                                        log.metadata ||
-                                                        {}
-                                                    )
-                                                )}
-                                            </td>
-
-                                        </tr>
-
-                                    `
-                                    )
-                                    .join("")}
-
-                            </tbody>
-
-                        </table>
+                        <button
+                            id="supportModalClose"
+                            type="button"
+                        >
+                            ×
+                        </button>
 
                     </div>
 
-                `
-                    : `
-                    <div class="empty">
-                        No audit logs found.
+
+                    <div
+                        id="supportModalBody"
+                    ></div>
+
+
+                    <div
+                        style="
+                            margin-top:24px;
+                            text-align:right;
+                        "
+                    >
+
+                        <button
+                            id="supportModalCloseBottom"
+                            type="button"
+                        >
+                            Close
+                        </button>
+
                     </div>
-                `
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        /* =====================================================
+           REFRESH
+        ===================================================== */
+
+        $("supportRefresh")
+            ?.addEventListener(
+                "click",
+                () =>
+                    loadSupport()
+            );
+
+
+        /* =====================================================
+           FILTERS
+        ===================================================== */
+
+        const searchInput =
+            $("supportSearch");
+
+        const statusFilter =
+            $("supportStatusFilter");
+
+        const priorityFilter =
+            $("supportPriorityFilter");
+
+        const resultCount =
+            $("supportResultCount");
+
+
+        function filterSupport() {
+
+            const search =
+                String(
+                    searchInput?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const status =
+                String(
+                    statusFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const priority =
+                String(
+                    priorityFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const rows =
+                document.querySelectorAll(
+                    ".support-row"
+                );
+
+
+            let visible =
+                0;
+
+
+            rows.forEach(
+                row => {
+
+                    const rowSearch =
+                        row.dataset.search ||
+                        "";
+
+                    const rowStatus =
+                        row.dataset.status ||
+                        "";
+
+                    const rowPriority =
+                        row.dataset.priority ||
+                        "";
+
+
+                    const matchesSearch =
+                        !search ||
+                        rowSearch.includes(
+                            search
+                        );
+
+
+                    const matchesStatus =
+                        !status ||
+                        rowStatus ===
+                            status;
+
+
+                    const matchesPriority =
+                        !priority ||
+                        rowPriority ===
+                            priority;
+
+
+                    const show =
+                        matchesSearch &&
+                        matchesStatus &&
+                        matchesPriority;
+
+
+                    row.style.display =
+                        show
+                            ? ""
+                            : "none";
+
+
+                    if (show) {
+                        visible++;
+                    }
+
+                }
+            );
+
+
+            if (resultCount) {
+
+                resultCount.textContent =
+                    `Showing ${visible} ticket(s)`;
+
             }
 
-        </div>
-    `;
+        }
 
 
-    $("auditRefresh").onclick =
-        () =>
-            loadAudit();
+        searchInput?.addEventListener(
+            "input",
+            filterSupport
+        );
+
+
+        statusFilter?.addEventListener(
+            "change",
+            filterSupport
+        );
+
+
+        priorityFilter?.addEventListener(
+            "change",
+            filterSupport
+        );
+
+
+        /* =====================================================
+           MODAL
+        ===================================================== */
+
+        const modal =
+            $("supportDetailsModal");
+
+        const modalBody =
+            $("supportModalBody");
+
+
+        function closeSupportModal() {
+
+            if (modal) {
+
+                modal.style.display =
+                    "none";
+
+            }
+
+        }
+
+
+        $("supportModalClose")
+            ?.addEventListener(
+                "click",
+                closeSupportModal
+            );
+
+
+        $("supportModalCloseBottom")
+            ?.addEventListener(
+                "click",
+                closeSupportModal
+            );
+
+
+        modal?.addEventListener(
+            "click",
+            event => {
+
+                if (
+                    event.target ===
+                    modal
+                ) {
+
+                    closeSupportModal();
+
+                }
+
+            }
+        );
+
+
+        /* =====================================================
+           VIEW TICKET
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".support-view-btn"
+            )
+            .forEach(
+                button => {
+
+                    button.addEventListener(
+                        "click",
+                        () => {
+
+                            const index =
+                                Number(
+                                    button.dataset.index
+                                );
+
+
+                            const ticket =
+                                tickets[index];
+
+
+                            if (!ticket) {
+                                return;
+                            }
+
+
+                            let messageHtml =
+                                "";
+
+
+                            const message =
+                                ticket.message ||
+                                ticket.description ||
+                                ticket.body;
+
+
+                            if (message) {
+
+                                messageHtml = `
+
+                                    <div
+                                        style="
+                                            margin-top:20px;
+                                        "
+                                    >
+
+                                        <h3>
+                                            Message
+                                        </h3>
+
+                                        <div
+                                            style="
+                                                background:#f8fafc;
+                                                border:1px solid #e5e7eb;
+                                                border-radius:10px;
+                                                padding:15px;
+                                                white-space:pre-wrap;
+                                                word-break:break-word;
+                                            "
+                                        >
+                                            ${escapeHtml(
+                                                message
+                                            )}
+                                        </div>
+
+                                    </div>
+
+                                `;
+
+                            }
+
+
+                            if (modalBody) {
+
+                                modalBody.innerHTML = `
+
+                                    <div
+                                        style="
+                                            display:grid;
+                                            grid-template-columns:
+                                                minmax(180px,220px)
+                                                1fr;
+                                            border:1px solid #e5e7eb;
+                                            border-radius:10px;
+                                            overflow:hidden;
+                                        "
+                                    >
+
+                                        <div class="support-detail-label">
+                                            Ticket ID
+                                        </div>
+
+                                        <div class="support-detail-value">
+                                            ${escapeHtml(
+                                                ticket.id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="support-detail-label">
+                                            User ID
+                                        </div>
+
+                                        <div class="support-detail-value">
+                                            ${escapeHtml(
+                                                ticket.user_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="support-detail-label">
+                                            Subject
+                                        </div>
+
+                                        <div class="support-detail-value">
+                                            ${escapeHtml(
+                                                ticket.subject ||
+                                                ticket.title ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="support-detail-label">
+                                            Category
+                                        </div>
+
+                                        <div class="support-detail-value">
+                                            ${escapeHtml(
+                                                ticket.category ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="support-detail-label">
+                                            Status
+                                        </div>
+
+                                        <div class="support-detail-value">
+
+                                            <span class="badge">
+                                                ${escapeHtml(
+                                                    ticket.status ||
+                                                    "—"
+                                                )}
+                                            </span>
+
+                                        </div>
+
+
+                                        <div class="support-detail-label">
+                                            Priority
+                                        </div>
+
+                                        <div class="support-detail-value">
+                                            ${escapeHtml(
+                                                ticket.priority ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="support-detail-label">
+                                            Created
+                                        </div>
+
+                                        <div class="support-detail-value">
+                                            ${formatDate(
+                                                ticket.created_at
+                                            )}
+                                        </div>
+
+
+                                        <div class="support-detail-label">
+                                            Updated
+                                        </div>
+
+                                        <div class="support-detail-value">
+                                            ${formatDate(
+                                                ticket.updated_at
+                                            )}
+                                        </div>
+
+                                    </div>
+
+
+                                    ${messageHtml}
+
+
+                                    <style>
+
+                                        .support-detail-label {
+                                            padding:12px;
+                                            background:#f9fafb;
+                                            border-bottom:1px solid #e5e7eb;
+                                            font-weight:600;
+                                        }
+
+                                        .support-detail-value {
+                                            padding:12px;
+                                            border-bottom:1px solid #e5e7eb;
+                                            word-break:break-word;
+                                        }
+
+                                    </style>
+
+                                `;
+
+                            }
+
+
+                            if (modal) {
+
+                                modal.style.display =
+                                    "block";
+
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+
+    } catch (error) {
+
+        console.error(
+            "Support section error:",
+            error
+        );
+
+
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div
+                    style="
+                        padding:25px;
+                        text-align:center;
+                    "
+                >
+
+                    <h2>
+                        Unable to load support tickets
+                    </h2>
+
+                    <p>
+                        ${escapeHtml(
+                            error?.message ||
+                            "An unexpected error occurred."
+                        )}
+                    </p>
+
+
+                    <button
+                        id="supportRetry"
+                        type="button"
+                    >
+                        Retry
+                    </button>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        $("supportRetry")
+            ?.addEventListener(
+                "click",
+                () =>
+                    loadSupport()
+            );
+
+    }
+
 }
-
-
 /* =========================================================
    SETTINGS
 ========================================================= */
