@@ -4948,48 +4948,176 @@ async function loadAI() {
         "Loading AI operations..."
     );
 
+    try {
 
-    const data =
-        await api(
-            "ai"
-        );
+        const data =
+            await api(
+                "ai"
+            );
+
+        const runs =
+            Array.isArray(
+                data?.ai_runs
+            )
+                ? data.ai_runs
+                : [];
 
 
-    const runs =
-        data.runs || data.ai_runs || [];
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div class="admin-header">
+
+                    <div>
+
+                        <h2>
+                            AI Operations
+                        </h2>
+
+                        <p>
+                            ${runs.length}
+                            AI run(s).
+                        </p>
+
+                    </div>
 
 
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <div class="admin-header">
-
-                <div>
-
-                    <h2>
-                        AI Operations
-                    </h2>
-
-                    <p>
-                        ${runs.length}
-                        AI run(s).
-                    </p>
+                    <button
+                        id="aiRefresh"
+                        type="button"
+                    >
+                        Refresh
+                    </button>
 
                 </div>
 
-                <button
-                    id="aiRefresh"
-                >
-                    Refresh
-                </button>
 
-            </div>
+                ${
+                    runs.length
+                        ? `
+
+                    <div
+                        style="
+                            display:flex;
+                            gap:12px;
+                            flex-wrap:wrap;
+                            margin-bottom:18px;
+                        "
+                    >
+
+                        <input
+                            id="aiSearch"
+                            class="search-box"
+                            type="search"
+                            placeholder="Search agent, provider, model or user..."
+                            autocomplete="off"
+                        >
 
 
-            ${
-                runs.length
-                    ? `
+                        <select
+                            id="aiStatusFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:150px;
+                            "
+                        >
+
+                            <option value="">
+                                All Statuses
+                            </option>
+
+                            ${[
+                                ...new Set(
+                                    runs
+                                        .map(
+                                            run =>
+                                                String(
+                                                    run.status ||
+                                                    ""
+                                                )
+                                                    .trim()
+                                            )
+                                        .filter(Boolean)
+                                ]
+                            ]
+                                .sort()
+                                .map(
+                                    status => `
+                                        <option
+                                            value="${escapeHtml(
+                                                status.toLowerCase()
+                                            )}"
+                                        >
+                                            ${escapeHtml(status)}
+                                        </option>
+                                    `
+                                )
+                                .join("")}
+
+                        </select>
+
+
+                        <select
+                            id="aiProviderFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:150px;
+                            "
+                        >
+
+                            <option value="">
+                                All Providers
+                            </option>
+
+                            ${[
+                                ...new Set(
+                                    runs
+                                        .map(
+                                            run =>
+                                                String(
+                                                    run.provider ||
+                                                    ""
+                                                )
+                                                    .trim()
+                                            )
+                                        .filter(Boolean)
+                                )
+                            ]
+                                .sort()
+                                .map(
+                                    provider => `
+                                        <option
+                                            value="${escapeHtml(
+                                                provider.toLowerCase()
+                                            )}"
+                                        >
+                                            ${escapeHtml(provider)}
+                                        </option>
+                                    `
+                                )
+                                .join("")}
+
+                        </select>
+
+                    </div>
+
+
+                    <div
+                        id="aiResultCount"
+                        style="
+                            margin-bottom:12px;
+                            color:#6b7280;
+                            font-size:14px;
+                        "
+                    >
+                        Showing ${runs.length} AI run(s)
+                    </div>
+
 
                     <div class="admin-table-wrapper">
 
@@ -5001,6 +5129,10 @@ async function loadAI() {
 
                                     <th>
                                         Agent
+                                    </th>
+
+                                    <th>
+                                        User
                                     </th>
 
                                     <th>
@@ -5016,7 +5148,11 @@ async function loadAI() {
                                     </th>
 
                                     <th>
-                                        Tokens
+                                        Input
+                                    </th>
+
+                                    <th>
+                                        Output
                                     </th>
 
                                     <th>
@@ -5031,90 +5167,189 @@ async function loadAI() {
                                         Created
                                     </th>
 
+                                    <th>
+                                        Action
+                                    </th>
+
                                 </tr>
 
                             </thead>
 
-                            <tbody>
+
+                            <tbody id="aiTableBody">
 
                                 ${runs
                                     .map(
-                                        run => `
+                                        (
+                                            run,
+                                            index
+                                        ) => {
 
-                                        <tr>
+                                            const searchable =
+                                                [
+                                                    run.id,
+                                                    run.user_id,
+                                                    run.agent,
+                                                    run.provider,
+                                                    run.model,
+                                                    run.status
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(" ")
+                                                    .toLowerCase();
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    run.agent ||
-                                                    "—"
-                                                )}
-                                            </td>
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    run.provider ||
-                                                    "—"
-                                                )}
-                                            </td>
+                                            return `
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    run.model ||
-                                                    "—"
-                                                )}
-                                            </td>
-
-                                            <td>
-
-                                                <span class="badge">
-
-                                                    ${escapeHtml(
-                                                        run.status ||
-                                                        "—"
-                                                    )}
-
-                                                </span>
-
-                                            </td>
-
-                                            <td>
-                                                ${escapeHtml(
-                                                    (
-                                                        Number(
-                                                            run.input_tokens ||
-                                                            0
-                                                        ) +
-                                                        Number(
-                                                            run.output_tokens ||
-                                                            0
+                                                <tr
+                                                    class="ai-row"
+                                                    data-index="${index}"
+                                                    data-search="${escapeHtml(
+                                                        searchable
+                                                    )}"
+                                                    data-status="${escapeHtml(
+                                                        String(
+                                                            run.status ||
+                                                            ""
                                                         )
-                                                    )
-                                                )}
-                                            </td>
+                                                            .trim()
+                                                            .toLowerCase()
+                                                    )}"
+                                                    data-provider="${escapeHtml(
+                                                        String(
+                                                            run.provider ||
+                                                            ""
+                                                        )
+                                                            .trim()
+                                                            .toLowerCase()
+                                                    )}"
+                                                >
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    run.estimated_cost ??
-                                                    "—"
-                                                )}
-                                            </td>
+                                                    <td>
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    run.latency_ms ??
-                                                    "—"
-                                                )} ms
-                                            </td>
+                                                        <strong>
+                                                            ${escapeHtml(
+                                                                run.agent ||
+                                                                "—"
+                                                            )}
+                                                        </strong>
 
-                                            <td>
-                                                ${formatDate(
-                                                    run.created_at
-                                                )}
-                                            </td>
+                                                    </td>
 
-                                        </tr>
 
-                                    `
+                                                    <td>
+
+                                                        <small
+                                                            style="
+                                                                word-break:break-all;
+                                                            "
+                                                        >
+                                                            ${escapeHtml(
+                                                                run.user_email ||
+                                                                run.email ||
+                                                                run.user_id ||
+                                                                "—"
+                                                            )}
+                                                        </small>
+
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            run.provider ||
+                                                            "—"
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            run.model ||
+                                                            "—"
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <span
+                                                            class="badge"
+                                                        >
+                                                            ${escapeHtml(
+                                                                run.status ||
+                                                                "—"
+                                                            )}
+                                                        </span>
+
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            String(
+                                                                run.input_tokens ??
+                                                                0
+                                                            )
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            String(
+                                                                run.output_tokens ??
+                                                                0
+                                                            )
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            String(
+                                                                run.estimated_cost ??
+                                                                0
+                                                            )
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            String(
+                                                                run.latency_ms ??
+                                                                0
+                                                            )
+                                                        )}
+                                                        ms
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${formatDate(
+                                                            run.created_at
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <button
+                                                            type="button"
+                                                            class="ai-view-btn"
+                                                            data-index="${index}"
+                                                        >
+                                                            View
+                                                        </button>
+
+                                                    </td>
+
+                                                </tr>
+
+                                            `;
+
+                                        }
                                     )
                                     .join("")}
 
@@ -5125,20 +5360,682 @@ async function loadAI() {
                     </div>
 
                 `
-                    : `
+                        : `
+
                     <div class="empty">
-                        No AI runs found.
+
+                        <h3>
+                            No AI runs found
+                        </h3>
+
+                        <p>
+                            No AI operations have been recorded yet.
+                        </p>
+
                     </div>
+
                 `
+                }
+
+            </div>
+
+
+            <!-- AI DETAILS MODAL -->
+
+            <div
+                id="aiDetailsModal"
+                style="
+                    display:none;
+                    position:fixed;
+                    inset:0;
+                    background:rgba(0,0,0,.55);
+                    z-index:9999;
+                    padding:20px;
+                    overflow:auto;
+                "
+            >
+
+                <div
+                    style="
+                        max-width:850px;
+                        margin:50px auto;
+                        background:#fff;
+                        border-radius:14px;
+                        padding:24px;
+                        box-shadow:0 20px 60px rgba(0,0,0,.25);
+                    "
+                >
+
+                    <div
+                        style="
+                            display:flex;
+                            align-items:center;
+                            justify-content:space-between;
+                            gap:15px;
+                            margin-bottom:20px;
+                        "
+                    >
+
+                        <h2
+                            style="margin:0;"
+                        >
+                            AI Run Details
+                        </h2>
+
+
+                        <button
+                            id="aiModalClose"
+                            type="button"
+                        >
+                            ×
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="aiModalBody"
+                    ></div>
+
+
+                    <div
+                        style="
+                            margin-top:24px;
+                            text-align:right;
+                        "
+                    >
+
+                        <button
+                            id="aiModalCloseBottom"
+                            type="button"
+                        >
+                            Close
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        /* =====================================================
+           REFRESH
+        ===================================================== */
+
+        $("aiRefresh")
+            ?.addEventListener(
+                "click",
+                () =>
+                    loadAI()
+            );
+
+
+        /* =====================================================
+           FILTERS
+        ===================================================== */
+
+        const searchInput =
+            $("aiSearch");
+
+        const statusFilter =
+            $("aiStatusFilter");
+
+        const providerFilter =
+            $("aiProviderFilter");
+
+        const resultCount =
+            $("aiResultCount");
+
+
+        function filterAI() {
+
+            const search =
+                String(
+                    searchInput?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const status =
+                String(
+                    statusFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const provider =
+                String(
+                    providerFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const rows =
+                document.querySelectorAll(
+                    ".ai-row"
+                );
+
+
+            let visible =
+                0;
+
+
+            rows.forEach(
+                row => {
+
+                    const rowSearch =
+                        row.dataset.search ||
+                        "";
+
+                    const rowStatus =
+                        row.dataset.status ||
+                        "";
+
+                    const rowProvider =
+                        row.dataset.provider ||
+                        "";
+
+
+                    const matchesSearch =
+                        !search ||
+                        rowSearch.includes(
+                            search
+                        );
+
+
+                    const matchesStatus =
+                        !status ||
+                        rowStatus ===
+                            status;
+
+
+                    const matchesProvider =
+                        !provider ||
+                        rowProvider ===
+                            provider;
+
+
+                    const show =
+                        matchesSearch &&
+                        matchesStatus &&
+                        matchesProvider;
+
+
+                    row.style.display =
+                        show
+                            ? ""
+                            : "none";
+
+
+                    if (show) {
+                        visible++;
+                    }
+
+                }
+            );
+
+
+            if (resultCount) {
+
+                resultCount.textContent =
+                    `Showing ${visible} AI run(s)`;
+
             }
 
-        </div>
-    `;
+        }
 
 
-    $("aiRefresh").onclick =
-        () =>
-            loadAI();
+        searchInput
+            ?.addEventListener(
+                "input",
+                filterAI
+            );
+
+
+        statusFilter
+            ?.addEventListener(
+                "change",
+                filterAI
+            );
+
+
+        providerFilter
+            ?.addEventListener(
+                "change",
+                filterAI
+            );
+
+
+        /* =====================================================
+           MODAL
+        ===================================================== */
+
+        const modal =
+            $("aiDetailsModal");
+
+        const modalBody =
+            $("aiModalBody");
+
+
+        function closeAIModal() {
+
+            if (modal) {
+
+                modal.style.display =
+                    "none";
+
+            }
+
+        }
+
+
+        $("aiModalClose")
+            ?.addEventListener(
+                "click",
+                closeAIModal
+            );
+
+
+        $("aiModalCloseBottom")
+            ?.addEventListener(
+                "click",
+                closeAIModal
+            );
+
+
+        modal?.addEventListener(
+            "click",
+            event => {
+
+                if (
+                    event.target ===
+                    modal
+                ) {
+
+                    closeAIModal();
+
+                }
+
+            }
+        );
+
+
+        /* =====================================================
+           VIEW AI RUN
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".ai-view-btn"
+            )
+            .forEach(
+                button => {
+
+                    button.addEventListener(
+                        "click",
+                        () => {
+
+                            const index =
+                                Number(
+                                    button.dataset.index
+                                );
+
+
+                            const run =
+                                runs[index];
+
+
+                            if (!run) {
+                                return;
+                            }
+
+
+                            if (modalBody) {
+
+                                let resultHtml =
+                                    "";
+
+
+                                if (
+                                    run.result !==
+                                        undefined &&
+                                    run.result !==
+                                        null
+                                ) {
+
+                                    let resultText;
+
+
+                                    try {
+
+                                        resultText =
+                                            typeof run.result ===
+                                                "string"
+                                                ? run.result
+                                                : JSON.stringify(
+                                                      run.result,
+                                                      null,
+                                                      2
+                                                  );
+
+                                    } catch {
+
+                                        resultText =
+                                            String(
+                                                run.result
+                                            );
+
+                                    }
+
+
+                                    resultHtml = `
+
+                                        <div
+                                            style="
+                                                margin-top:20px;
+                                            "
+                                        >
+
+                                            <h3>
+                                                Result
+                                            </h3>
+
+                                            <pre
+                                                style="
+                                                    background:#f8fafc;
+                                                    border:1px solid #e5e7eb;
+                                                    border-radius:10px;
+                                                    padding:15px;
+                                                    max-height:400px;
+                                                    overflow:auto;
+                                                    white-space:pre-wrap;
+                                                    word-break:break-word;
+                                                    font-size:13px;
+                                                "
+                                            >${escapeHtml(
+                                                resultText
+                                            )}</pre>
+
+                                        </div>
+
+                                    `;
+
+                                }
+
+
+                                modalBody.innerHTML = `
+
+                                    <div
+                                        style="
+                                            display:grid;
+                                            grid-template-columns:
+                                                minmax(180px,220px)
+                                                1fr;
+                                            border:1px solid #e5e7eb;
+                                            border-radius:10px;
+                                            overflow:hidden;
+                                        "
+                                    >
+
+                                        <div class="ai-detail-label">
+                                            Run ID
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${escapeHtml(
+                                                run.id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            User ID
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${escapeHtml(
+                                                run.user_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Agent
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${escapeHtml(
+                                                run.agent ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Provider
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${escapeHtml(
+                                                run.provider ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Model
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${escapeHtml(
+                                                run.model ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Status
+                                        </div>
+
+                                        <div class="ai-detail-value">
+
+                                            <span class="badge">
+                                                ${escapeHtml(
+                                                    run.status ||
+                                                    "—"
+                                                )}
+                                            </span>
+
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Input Tokens
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${escapeHtml(
+                                                String(
+                                                    run.input_tokens ??
+                                                    0
+                                                )
+                                            )}
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Output Tokens
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${escapeHtml(
+                                                String(
+                                                    run.output_tokens ??
+                                                    0
+                                                )
+                                            )}
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Estimated Cost
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${escapeHtml(
+                                                String(
+                                                    run.estimated_cost ??
+                                                    0
+                                                )
+                                            )}
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Latency
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${escapeHtml(
+                                                String(
+                                                    run.latency_ms ??
+                                                    0
+                                                )
+                                            )}
+                                            ms
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Created
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${formatDate(
+                                                run.created_at
+                                            )}
+                                        </div>
+
+
+                                        <div class="ai-detail-label">
+                                            Updated
+                                        </div>
+
+                                        <div class="ai-detail-value">
+                                            ${formatDate(
+                                                run.updated_at
+                                            )}
+                                        </div>
+
+                                    </div>
+
+
+                                    ${resultHtml}
+
+
+                                    <style>
+
+                                        .ai-detail-label {
+                                            padding:12px;
+                                            background:#f9fafb;
+                                            border-bottom:1px solid #e5e7eb;
+                                            font-weight:600;
+                                        }
+
+                                        .ai-detail-value {
+                                            padding:12px;
+                                            border-bottom:1px solid #e5e7eb;
+                                            word-break:break-word;
+                                        }
+
+                                    </style>
+
+                                `;
+
+                            }
+
+
+                            if (modal) {
+
+                                modal.style.display =
+                                    "block";
+
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+
+    } catch (error) {
+
+        console.error(
+            "AI section error:",
+            error
+        );
+
+
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div
+                    style="
+                        padding:25px;
+                        text-align:center;
+                    "
+                >
+
+                    <h2>
+                        Unable to load AI operations
+                    </h2>
+
+                    <p>
+                        ${escapeHtml(
+                            error?.message ||
+                            "An unexpected error occurred."
+                        )}
+                    </p>
+
+
+                    <button
+                        id="aiRetry"
+                        type="button"
+                    >
+                        Retry
+                    </button>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        $("aiRetry")
+            ?.addEventListener(
+                "click",
+                () =>
+                    loadAI()
+            );
+
+    }
+
 }
 
 
