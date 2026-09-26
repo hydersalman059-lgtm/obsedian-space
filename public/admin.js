@@ -2817,48 +2817,166 @@ async function loadSubscriptions() {
         "Loading subscriptions..."
     );
 
+    try {
 
-    const data =
-        await api(
-            "subscriptions"
-        );
+        const data =
+            await api(
+                "subscriptions"
+            );
+
+        const subscriptions =
+            Array.isArray(
+                data?.subscriptions
+            )
+                ? data.subscriptions
+                : [];
 
 
-    const subscriptions =
-        data.subscriptions || [];
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div class="admin-header">
+
+                    <div>
+
+                        <h2>
+                            Subscriptions
+                        </h2>
+
+                        <p>
+                            ${subscriptions.length}
+                            subscription record(s).
+                        </p>
+
+                    </div>
 
 
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <div class="admin-header">
-
-                <div>
-
-                    <h2>
-                        Subscriptions
-                    </h2>
-
-                    <p>
-                        ${subscriptions.length}
-                        subscription record(s).
-                    </p>
+                    <button
+                        id="subscriptionsRefresh"
+                        type="button"
+                    >
+                        Refresh
+                    </button>
 
                 </div>
 
-                <button
-                    id="subscriptionsRefresh"
-                >
-                    Refresh
-                </button>
 
-            </div>
+                ${
+                    subscriptions.length
+                        ? `
+
+                    <div
+                        style="
+                            display:flex;
+                            gap:12px;
+                            flex-wrap:wrap;
+                            margin-bottom:18px;
+                        "
+                    >
+
+                        <input
+                            id="subscriptionSearch"
+                            class="search-box"
+                            type="search"
+                            placeholder="Search user, plan, provider or ID..."
+                            autocomplete="off"
+                        >
 
 
-            ${
-                subscriptions.length
-                    ? `
+                        <select
+                            id="subscriptionStatusFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:160px;
+                            "
+                        >
+
+                            <option value="">
+                                All Statuses
+                            </option>
+
+                            <option value="trial">
+                                Trial
+                            </option>
+
+                            <option value="active">
+                                Active
+                            </option>
+
+                            <option value="cancelled">
+                                Cancelled
+                            </option>
+
+                            <option value="expired">
+                                Expired
+                            </option>
+
+                            <option value="past_due">
+                                Past Due
+                            </option>
+
+                        </select>
+
+
+                        <select
+                            id="subscriptionPlanFilter"
+                            style="
+                                padding:12px;
+                                border:1px solid #d1d5db;
+                                border-radius:8px;
+                                min-width:150px;
+                            "
+                        >
+
+                            <option value="">
+                                All Plans
+                            </option>
+
+                            ${[
+                                ...new Set(
+                                    subscriptions
+                                        .map(
+                                            sub =>
+                                                String(
+                                                    sub.plan_id || ""
+                                                )
+                                                    .trim()
+                                            )
+                                        .filter(Boolean)
+                                )
+                            ]
+                                .sort()
+                                .map(
+                                    plan => `
+                                        <option
+                                            value="${escapeHtml(plan)}"
+                                        >
+                                            ${escapeHtml(plan)}
+                                        </option>
+                                    `
+                                )
+                                .join("")}
+
+                        </select>
+
+                    </div>
+
+
+                    <div
+                        id="subscriptionResultCount"
+                        style="
+                            margin-bottom:12px;
+                            color:#6b7280;
+                            font-size:14px;
+                        "
+                    >
+                        Showing ${subscriptions.length}
+                        subscription(s)
+                    </div>
+
 
                     <div class="admin-table-wrapper">
 
@@ -2900,77 +3018,178 @@ async function loadSubscriptions() {
                                         Updated
                                     </th>
 
+                                    <th>
+                                        Action
+                                    </th>
+
                                 </tr>
 
                             </thead>
 
-                            <tbody>
+
+                            <tbody id="subscriptionsTableBody">
 
                                 ${subscriptions
                                     .map(
-                                        sub => `
+                                        (
+                                            sub,
+                                            index
+                                        ) => {
 
-                                        <tr>
+                                            const searchable =
+                                                [
+                                                    sub.id,
+                                                    sub.user_id,
+                                                    sub.plan_id,
+                                                    sub.billing_cycle,
+                                                    sub.status,
+                                                    sub.provider,
+                                                    sub.provider_customer_id,
+                                                    sub.provider_subscription_id,
+                                                    sub.razorpay_order_id,
+                                                    sub.razorpay_payment_id
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(" ")
+                                                    .toLowerCase();
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    sub.user_id
-                                                )}
-                                            </td>
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    sub.plan_id ||
-                                                    "—"
-                                                )}
-                                            </td>
+                                            return `
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    sub.billing_cycle ||
-                                                    "—"
-                                                )}
-                                            </td>
+                                                <tr
+                                                    class="subscription-row"
+                                                    data-index="${index}"
+                                                    data-search="${escapeHtml(
+                                                        searchable
+                                                    )}"
+                                                    data-status="${escapeHtml(
+                                                        String(
+                                                            sub.status ||
+                                                            ""
+                                                        ).toLowerCase()
+                                                    )}"
+                                                    data-plan="${escapeHtml(
+                                                        String(
+                                                            sub.plan_id ||
+                                                            ""
+                                                        ).toLowerCase()
+                                                    )}"
+                                                >
 
-                                            <td>
+                                                    <td>
 
-                                                <span class="badge">
-                                                    ${escapeHtml(
-                                                        sub.status ||
-                                                        "—"
-                                                    )}
-                                                </span>
+                                                        <strong>
+                                                            ${escapeHtml(
+                                                                sub.user_email ||
+                                                                sub.email ||
+                                                                sub.user_id ||
+                                                                "—"
+                                                            )}
+                                                        </strong>
 
-                                            </td>
+                                                        ${
+                                                            sub.user_id
+                                                                ? `
+                                                                    <br>
+                                                                    <small
+                                                                        style="
+                                                                            color:#6b7280;
+                                                                            word-break:break-all;
+                                                                        "
+                                                                    >
+                                                                        ${escapeHtml(
+                                                                            sub.user_id
+                                                                        )}
+                                                                    </small>
+                                                                `
+                                                                : ""
+                                                        }
 
-                                            <td>
-                                                ${escapeHtml(
-                                                    sub.provider ||
-                                                    "—"
-                                                )}
-                                            </td>
+                                                    </td>
 
-                                            <td>
-                                                ${formatDateOnly(
-                                                    sub.started_at
-                                                )}
-                                            </td>
 
-                                            <td>
-                                                ${formatDateOnly(
-                                                    sub.subscription_ends_at
-                                                )}
-                                            </td>
+                                                    <td>
 
-                                            <td>
-                                                ${formatDate(
-                                                    sub.updated_at
-                                                )}
-                                            </td>
+                                                        <span
+                                                            class="badge"
+                                                        >
+                                                            ${escapeHtml(
+                                                                sub.plan_id ||
+                                                                "—"
+                                                            )}
+                                                        </span>
 
-                                        </tr>
+                                                    </td>
 
-                                    `
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            sub.billing_cycle ||
+                                                            "—"
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <span
+                                                            class="badge"
+                                                        >
+                                                            ${escapeHtml(
+                                                                sub.status ||
+                                                                "—"
+                                                            )}
+                                                        </span>
+
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${escapeHtml(
+                                                            sub.provider ||
+                                                            "—"
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${formatDate(
+                                                            sub.started_at
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${formatDate(
+                                                            sub.subscription_ends_at
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+                                                        ${formatDate(
+                                                            sub.updated_at
+                                                        )}
+                                                    </td>
+
+
+                                                    <td>
+
+                                                        <button
+                                                            type="button"
+                                                            class="subscription-view-btn"
+                                                            data-index="${index}"
+                                                        >
+                                                            View
+                                                        </button>
+
+                                                    </td>
+
+                                                </tr>
+
+                                            `;
+
+                                        }
                                     )
                                     .join("")}
 
@@ -2981,22 +3200,683 @@ async function loadSubscriptions() {
                     </div>
 
                 `
-                    : `
+                        : `
+
                     <div class="empty">
-                        No subscriptions found.
+
+                        <h3>
+                            No subscriptions found
+                        </h3>
+
+                        <p>
+                            No subscription records are currently available.
+                        </p>
+
                     </div>
+
                 `
+                }
+
+            </div>
+
+
+            <!-- SUBSCRIPTION DETAILS MODAL -->
+
+            <div
+                id="subscriptionDetailsModal"
+                style="
+                    display:none;
+                    position:fixed;
+                    inset:0;
+                    background:rgba(0,0,0,.55);
+                    z-index:9999;
+                    padding:20px;
+                    overflow:auto;
+                "
+            >
+
+                <div
+                    style="
+                        max-width:760px;
+                        margin:50px auto;
+                        background:#fff;
+                        border-radius:14px;
+                        padding:24px;
+                        box-shadow:0 20px 60px rgba(0,0,0,.25);
+                    "
+                >
+
+                    <div
+                        style="
+                            display:flex;
+                            align-items:center;
+                            justify-content:space-between;
+                            gap:15px;
+                            margin-bottom:20px;
+                        "
+                    >
+
+                        <h2
+                            id="subscriptionModalTitle"
+                            style="margin:0;"
+                        >
+                            Subscription Details
+                        </h2>
+
+
+                        <button
+                            id="subscriptionModalClose"
+                            type="button"
+                        >
+                            ×
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="subscriptionModalBody"
+                    ></div>
+
+
+                    <div
+                        style="
+                            margin-top:24px;
+                            text-align:right;
+                        "
+                    >
+
+                        <button
+                            id="subscriptionModalCloseBottom"
+                            type="button"
+                        >
+                            Close
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        /* =====================================================
+           REFRESH
+        ===================================================== */
+
+        const refresh =
+            $("subscriptionsRefresh");
+
+        if (refresh) {
+
+            refresh.onclick =
+                () =>
+                    loadSubscriptions();
+
+        }
+
+
+        /* =====================================================
+           FILTERS
+        ===================================================== */
+
+        const searchInput =
+            $("subscriptionSearch");
+
+        const statusFilter =
+            $("subscriptionStatusFilter");
+
+        const planFilter =
+            $("subscriptionPlanFilter");
+
+        const resultCount =
+            $("subscriptionResultCount");
+
+
+        function filterSubscriptions() {
+
+            const search =
+                String(
+                    searchInput?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const status =
+                String(
+                    statusFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const plan =
+                String(
+                    planFilter?.value ||
+                    ""
+                )
+                    .trim()
+                    .toLowerCase();
+
+
+            const rows =
+                document.querySelectorAll(
+                    ".subscription-row"
+                );
+
+
+            let visible =
+                0;
+
+
+            rows.forEach(
+                row => {
+
+                    const rowSearch =
+                        row.dataset.search ||
+                        "";
+
+                    const rowStatus =
+                        row.dataset.status ||
+                        "";
+
+                    const rowPlan =
+                        row.dataset.plan ||
+                        "";
+
+
+                    const matchesSearch =
+                        !search ||
+                        rowSearch.includes(
+                            search
+                        );
+
+
+                    const matchesStatus =
+                        !status ||
+                        rowStatus ===
+                            status;
+
+
+                    const matchesPlan =
+                        !plan ||
+                        rowPlan ===
+                            plan;
+
+
+                    const show =
+                        matchesSearch &&
+                        matchesStatus &&
+                        matchesPlan;
+
+
+                    row.style.display =
+                        show
+                            ? ""
+                            : "none";
+
+
+                    if (show) {
+                        visible++;
+                    }
+
+                }
+            );
+
+
+            if (resultCount) {
+
+                resultCount.textContent =
+                    `Showing ${visible} subscription(s)`;
+
             }
 
-        </div>
-    `;
+        }
 
 
-    $("subscriptionsRefresh").onclick =
-        () =>
-            loadSubscriptions();
+        if (searchInput) {
+
+            searchInput.addEventListener(
+                "input",
+                filterSubscriptions
+            );
+
+        }
+
+
+        if (statusFilter) {
+
+            statusFilter.addEventListener(
+                "change",
+                filterSubscriptions
+            );
+
+        }
+
+
+        if (planFilter) {
+
+            planFilter.addEventListener(
+                "change",
+                filterSubscriptions
+            );
+
+        }
+
+
+        /* =====================================================
+           MODAL
+        ===================================================== */
+
+        const modal =
+            $("subscriptionDetailsModal");
+
+        const modalTitle =
+            $("subscriptionModalTitle");
+
+        const modalBody =
+            $("subscriptionModalBody");
+
+
+        function closeSubscriptionModal() {
+
+            if (modal) {
+
+                modal.style.display =
+                    "none";
+
+            }
+
+        }
+
+
+        $("subscriptionModalClose")
+            ?.addEventListener(
+                "click",
+                closeSubscriptionModal
+            );
+
+
+        $("subscriptionModalCloseBottom")
+            ?.addEventListener(
+                "click",
+                closeSubscriptionModal
+            );
+
+
+        if (modal) {
+
+            modal.addEventListener(
+                "click",
+                event => {
+
+                    if (
+                        event.target ===
+                        modal
+                    ) {
+
+                        closeSubscriptionModal();
+
+                    }
+
+                }
+            );
+
+        }
+
+
+        /* =====================================================
+           VIEW DETAILS
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".subscription-view-btn"
+            )
+            .forEach(
+                button => {
+
+                    button.addEventListener(
+                        "click",
+                        () => {
+
+                            const index =
+                                Number(
+                                    button.dataset.index
+                                );
+
+
+                            const sub =
+                                subscriptions[
+                                    index
+                                ];
+
+
+                            if (!sub) {
+                                return;
+                            }
+
+
+                            if (modalTitle) {
+
+                                modalTitle.textContent =
+                                    "Subscription Details";
+
+                            }
+
+
+                            if (modalBody) {
+
+                                modalBody.innerHTML = `
+
+                                    <div
+                                        style="
+                                            display:grid;
+                                            grid-template-columns:
+                                                minmax(170px,190px)
+                                                1fr;
+                                            border:1px solid #e5e7eb;
+                                            border-radius:10px;
+                                            overflow:hidden;
+                                        "
+                                    >
+
+                                        <div class="subscription-detail-label">
+                                            Subscription ID
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            User ID
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.user_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Plan
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.plan_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Billing Cycle
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.billing_cycle ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Status
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+
+                                            <span class="badge">
+                                                ${escapeHtml(
+                                                    sub.status ||
+                                                    "—"
+                                                )}
+                                            </span>
+
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Provider
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.provider ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Provider Customer ID
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.provider_customer_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Provider Subscription ID
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.provider_subscription_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Razorpay Order ID
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.razorpay_order_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Razorpay Payment ID
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.razorpay_payment_id ||
+                                                "—"
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Payment Amount
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${escapeHtml(
+                                                sub.payment_amount ??
+                                                "—"
+                                            )}
+                                            ${
+                                                sub.currency
+                                                    ? `
+                                                        ${escapeHtml(
+                                                            sub.currency
+                                                        )}
+                                                    `
+                                                    : ""
+                                            }
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Last Payment
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${formatDate(
+                                                sub.last_payment_at
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Started
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${formatDate(
+                                                sub.started_at
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Subscription Ends
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${formatDate(
+                                                sub.subscription_ends_at
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Created
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${formatDate(
+                                                sub.created_at
+                                            )}
+                                        </div>
+
+
+                                        <div class="subscription-detail-label">
+                                            Updated
+                                        </div>
+
+                                        <div class="subscription-detail-value">
+                                            ${formatDate(
+                                                sub.updated_at
+                                            )}
+                                        </div>
+
+                                    </div>
+
+                                    <style>
+
+                                        .subscription-detail-label {
+                                            padding:12px;
+                                            background:#f9fafb;
+                                            border-bottom:1px solid #e5e7eb;
+                                            font-weight:600;
+                                        }
+
+                                        .subscription-detail-value {
+                                            padding:12px;
+                                            border-bottom:1px solid #e5e7eb;
+                                            word-break:break-word;
+                                        }
+
+                                    </style>
+
+                                `;
+
+                            }
+
+
+                            if (modal) {
+
+                                modal.style.display =
+                                    "block";
+
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+
+    } catch (error) {
+
+        console.error(
+            "Subscriptions section error:",
+            error
+        );
+
+
+        $("content").innerHTML = `
+
+            <div class="card">
+
+                <div
+                    style="
+                        padding:25px;
+                        text-align:center;
+                    "
+                >
+
+                    <h2>
+                        Unable to load subscriptions
+                    </h2>
+
+                    <p>
+                        ${escapeHtml(
+                            error?.message ||
+                            "An unexpected error occurred."
+                        )}
+                    </p>
+
+                    <button
+                        id="subscriptionsRetry"
+                        type="button"
+                    >
+                        Retry
+                    </button>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        $("subscriptionsRetry")
+            ?.addEventListener(
+                "click",
+                () =>
+                    loadSubscriptions()
+            );
+
+    }
+
 }
-
 
 /* =========================================================
    PAYMENTS
