@@ -8489,61 +8489,128 @@ async function logout() {
 
 /* =========================================================
    NAV BUTTON EVENTS
-   Robust delegated navigation
+   FIXED - DOM SAFE + EVENT DELEGATION
 ========================================================= */
 
-document.addEventListener(
-    "click",
-    event => {
+function initializeAdminNavigation() {
 
-        const button =
-            event.target.closest(
-                ".admin-nav button"
-            );
-
-        if (!button) {
-            return;
-        }
+    console.log(
+        "Initializing Admin Navigation..."
+    );
 
 
-        /*
-         * Prevent the button from submitting
-         * any surrounding form.
-         */
+    /*
+     * Event delegation:
+     * We attach ONE listener to document.
+     * This works even if navigation buttons
+     * are rendered/replaced later.
+     */
 
-        event.preventDefault();
-
-        event.stopPropagation();
-
-
-        const section =
-            button.dataset.section;
-
-
-        if (!section) {
-
-            console.warn(
-                "Admin navigation button has no data-section:",
-                button
-            );
-
-            return;
-        }
-
-
+    if (
+        window.__adminNavigationInitialized
+    ) {
         console.log(
-            "Admin navigation:",
-            section
+            "Admin Navigation already initialized."
         );
 
-
-        loadSection(
-            section
-        );
-
+        return;
     }
-);
 
+
+    window.__adminNavigationInitialized =
+        true;
+
+
+    document.addEventListener(
+        "click",
+        function (event) {
+
+            const button =
+                event.target.closest(
+                    ".admin-nav button"
+                );
+
+
+            /*
+             * Click was not on an admin
+             * navigation button.
+             */
+
+            if (!button) {
+                return;
+            }
+
+
+            /*
+             * Stop default button/form behavior.
+             */
+
+            event.preventDefault();
+
+            event.stopPropagation();
+
+
+            const section =
+                button.getAttribute(
+                    "data-section"
+                );
+
+
+            console.log(
+                "Admin navigation clicked:",
+                section
+            );
+
+
+            if (!section) {
+
+                console.error(
+                    "Admin navigation button is missing data-section:",
+                    button
+                );
+
+                return;
+            }
+
+
+            /*
+             * Load selected section.
+             */
+
+            loadSection(
+                section
+            );
+
+        },
+        false
+    );
+
+
+    console.log(
+        "Admin Navigation initialized successfully."
+    );
+}
+
+
+/*
+ * Initialize after DOM is ready.
+ */
+
+if (
+    document.readyState ===
+    "loading"
+) {
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        initializeAdminNavigation
+    );
+
+} else {
+
+    initializeAdminNavigation();
+
+}
 /* =========================================================
    LOGOUT BUTTON
 ========================================================= */
