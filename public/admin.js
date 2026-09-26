@@ -167,6 +167,16 @@ function loading(message = "Loading...") {
 }
 
 
+/* =========================================================
+   LOADING COMPATIBILITY
+========================================================= */
+
+function showLoading(message = "Loading...") {
+    loading(message);
+}
+
+
+
 function errorBox(message) {
 
     const content = $("content");
@@ -197,6 +207,20 @@ function errorBox(message) {
 
         };
     }
+}
+
+
+
+/* =========================================================
+   LOADING COMPATIBILITY
+========================================================= */
+
+function showLoading(message = "Loading...") {
+    loading(message);
+}
+
+function formatDateTime(value) {
+    return formatDate(value);
 }
 
 
