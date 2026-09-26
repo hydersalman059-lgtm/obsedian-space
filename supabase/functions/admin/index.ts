@@ -230,6 +230,23 @@ Deno.serve(async (req) => {
                     return json({ error: "Invalid role." }, 400);
                 }
 
+
+               if (
+    action === "update_user" &&
+    userId === user.id &&
+    role !== null &&
+    role !== "admin"
+) {
+    return json(
+        {
+            error:
+                "You cannot remove administrator access from your own account."
+        },
+        400
+    );
+}
+
+
                 if (billingCycle !== null && !["free", "monthly", "yearly"].includes(billingCycle)) {
                     return json({ error: "Invalid billing cycle." }, 400);
                 }
@@ -439,6 +456,408 @@ Deno.serve(async (req) => {
             return json({ error: "Unsupported users action." }, 400);
         }
 
+
+
+
+
+
+        /* -----------------------------------------------------
+   WEBSITES MANAGEMENT
+----------------------------------------------------- */
+
+if (section === "websites") {
+
+    const action =
+        String(
+            body?.action || ""
+        ).trim();
+
+    const websiteId =
+        String(
+            body?.website_id || ""
+        ).trim();
+
+
+    if (!websiteId) {
+
+        return json(
+            {
+                error:
+                    "website_id is required."
+            },
+            400
+        );
+
+    }
+
+
+    /* =================================================
+       UPDATE WEBSITE
+    ================================================= */
+
+    if (
+        action ===
+        "update_website"
+    ) {
+
+        const name =
+            body?.name !== undefined
+                ? String(
+                    body.name
+                ).trim()
+                : null;
+
+        const urlValue =
+            body?.url !== undefined
+                ? String(
+                    body.url
+                ).trim()
+                : null;
+
+        const status =
+            body?.status !== undefined
+                ? String(
+                    body.status
+                ).trim()
+                    .toLowerCase()
+                : null;
+
+        const crawlFrequency =
+            body?.crawl_frequency !== undefined
+                ? String(
+                    body.crawl_frequency
+                ).trim()
+                    .toLowerCase()
+                : null;
+
+
+        if (
+            name !== null &&
+            !name
+        ) {
+
+            return json(
+                {
+                    error:
+                        "Website name cannot be empty."
+                },
+                400
+            );
+
+        }
+
+
+        if (
+            status !== null &&
+            ![
+                "active",
+                "inactive",
+                "pending",
+                "error"
+            ].includes(
+                status
+            )
+        ) {
+
+            return json(
+                {
+                    error:
+                        "Invalid website status."
+                },
+                400
+            );
+
+        }
+
+
+        if (
+            crawlFrequency !== null &&
+            ![
+                "manual",
+                "hourly",
+                "daily",
+                "weekly",
+                "monthly"
+            ].includes(
+                crawlFrequency
+            )
+        ) {
+
+            return json(
+                {
+                    error:
+                        "Invalid crawl frequency."
+                },
+                400
+            );
+
+        }
+
+
+        if (
+            urlValue !== null &&
+            urlValue &&
+            !/^https?:\/\/.+/i.test(
+                urlValue
+            )
+        ) {
+
+            return json(
+                {
+                    error:
+                        "Website URL must start with http:// or https://."
+                },
+                400
+            );
+
+        }
+
+
+        const patch:
+            Record<string, any> = {
+                updated_at:
+                    new Date()
+                        .toISOString()
+            };
+
+
+        if (
+            name !== null
+        ) {
+
+            patch.name =
+                name.slice(
+                    0,
+                    200
+                );
+
+        }
+
+
+        if (
+            urlValue !== null
+        ) {
+
+            patch.url =
+                urlValue.slice(
+                    0,
+                    2000
+                );
+
+        }
+
+
+        if (
+            status !== null
+        ) {
+
+            patch.status =
+                status;
+
+        }
+
+
+        if (
+            crawlFrequency !== null
+        ) {
+
+            patch.crawl_frequency =
+                crawlFrequency;
+
+        }
+
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("websites")
+            .update(
+                patch
+            )
+            .eq(
+                "id",
+                websiteId
+            )
+            .select("*")
+            .maybeSingle();
+
+
+        if (error) {
+
+            console.error(
+                "Website update error:",
+                error
+            );
+
+            return json(
+                {
+                    error:
+                        "Unable to update website.",
+                    details:
+                        error.message
+                },
+                500
+            );
+
+        }
+
+
+        if (!data) {
+
+            return json(
+                {
+                    error:
+                        "Website not found."
+                },
+                404
+            );
+
+        }
+
+
+        return json(
+            {
+                success:
+                    true,
+
+                section:
+                    "websites",
+
+                website:
+                    data,
+
+                message:
+                    "Website updated successfully."
+            }
+        );
+
+    }
+
+
+    /* =================================================
+       DELETE WEBSITE
+    ================================================= */
+
+    if (
+        action ===
+        "delete_website"
+    ) {
+
+        const {
+            data: existing,
+            error:
+                lookupError
+        } = await sb
+            .from("websites")
+            .select(
+                "id,name,url,user_id"
+            )
+            .eq(
+                "id",
+                websiteId
+            )
+            .maybeSingle();
+
+
+        if (lookupError) {
+
+            return json(
+                {
+                    error:
+                        "Unable to find website.",
+                    details:
+                        lookupError.message
+                },
+                500
+            );
+
+        }
+
+
+        if (!existing) {
+
+            return json(
+                {
+                    error:
+                        "Website not found."
+                },
+                404
+            );
+
+        }
+
+
+        const {
+            error:
+                deleteError
+        } = await sb
+            .from("websites")
+            .delete()
+            .eq(
+                "id",
+                websiteId
+            );
+
+
+        if (deleteError) {
+
+            console.error(
+                "Website delete error:",
+                deleteError
+            );
+
+            return json(
+                {
+                    error:
+                        "Unable to delete website.",
+                    details:
+                        deleteError.message
+                },
+                500
+            );
+
+        }
+
+
+        return json(
+            {
+                success:
+                    true,
+
+                section:
+                    "websites",
+
+                website_id:
+                    websiteId,
+
+                message:
+                    "Website deleted successfully."
+            }
+        );
+
+    }
+
+
+    return json(
+        {
+            error:
+                "Unsupported websites action."
+        },
+        400
+    );
+
+}
+
+
+          
+
+
+
+
+
+
+
         /* -----------------------------------------------------
            SETTINGS WRITE
         ----------------------------------------------------- */
@@ -535,6 +954,16 @@ Deno.serve(async (req) => {
                 400
             );
         }
+
+
+
+
+
+
+
+
+
+
 
         /* -----------------------------------------------------
            Optional logo upload

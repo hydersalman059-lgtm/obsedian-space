@@ -2217,13 +2217,41 @@ async function loadWebsites() {
 
                                         <td>
 
-                                            <button
-                                                type="button"
-                                                class="website-view-btn"
-                                                data-index="${index}"
-                                            >
-                                                View
-                                            </button>
+                                            <div
+    style="
+        display:flex;
+        gap:6px;
+        flex-wrap:wrap;
+    "
+>
+    <button
+        type="button"
+        class="website-view-btn"
+        data-index="${index}"
+    >
+        View
+    </button>
+
+    <button
+        type="button"
+        class="website-edit-btn"
+        data-index="${index}"
+    >
+        Edit
+    </button>
+
+    <button
+        type="button"
+        class="website-delete-btn"
+        data-index="${index}"
+        style="
+            background:#dc2626;
+            color:#fff;
+        "
+    >
+        Delete
+    </button>
+</div>
 
                                         </td>
 
@@ -2829,6 +2857,547 @@ async function loadWebsites() {
     }
 
 }
+
+/* =====================================================
+   EDIT WEBSITE
+===================================================== */
+
+document
+    .querySelectorAll(
+        ".website-edit-btn"
+    )
+    .forEach(
+        button => {
+
+            button.addEventListener(
+                "click",
+                () => {
+
+                    const index =
+                        Number(
+                            button.dataset.index
+                        );
+
+                    const site =
+                        websites[index];
+
+
+                    if (!site) {
+                        return;
+                    }
+
+
+                    const modal =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    modal.style.cssText = `
+                        position:fixed;
+                        inset:0;
+                        background:rgba(0,0,0,.55);
+                        z-index:10000;
+                        padding:20px;
+                        overflow:auto;
+                    `;
+
+
+                    modal.innerHTML = `
+                        <div
+                            style="
+                                max-width:650px;
+                                margin:60px auto;
+                                background:#fff;
+                                border-radius:14px;
+                                padding:24px;
+                                box-shadow:0 20px 60px rgba(0,0,0,.25);
+                            "
+                        >
+
+                            <div
+                                style="
+                                    display:flex;
+                                    justify-content:space-between;
+                                    align-items:center;
+                                    margin-bottom:20px;
+                                "
+                            >
+
+                                <h2 style="margin:0;">
+                                    Edit Website
+                                </h2>
+
+                                <button
+                                    type="button"
+                                    id="closeWebsiteEdit"
+                                >
+                                    ×
+                                </button>
+
+                            </div>
+
+
+                            <label
+                                style="
+                                    display:block;
+                                    margin-bottom:16px;
+                                "
+                            >
+
+                                <strong>
+                                    Website Name
+                                </strong>
+
+                                <input
+                                    id="editWebsiteName"
+                                    type="text"
+                                    value="${escapeHtml(
+                                        site.name || ""
+                                    )}"
+                                    style="
+                                        width:100%;
+                                        padding:11px;
+                                        margin-top:6px;
+                                        border:1px solid #d1d5db;
+                                        border-radius:8px;
+                                    "
+                                >
+
+                            </label>
+
+
+                            <label
+                                style="
+                                    display:block;
+                                    margin-bottom:16px;
+                                "
+                            >
+
+                                <strong>
+                                    Website URL
+                                </strong>
+
+                                <input
+                                    id="editWebsiteUrl"
+                                    type="url"
+                                    value="${escapeHtml(
+                                        site.url || ""
+                                    )}"
+                                    placeholder="https://example.com"
+                                    style="
+                                        width:100%;
+                                        padding:11px;
+                                        margin-top:6px;
+                                        border:1px solid #d1d5db;
+                                        border-radius:8px;
+                                    "
+                                >
+
+                            </label>
+
+
+                            <label
+                                style="
+                                    display:block;
+                                    margin-bottom:16px;
+                                "
+                            >
+
+                                <strong>
+                                    Status
+                                </strong>
+
+                                <select
+                                    id="editWebsiteStatus"
+                                    style="
+                                        width:100%;
+                                        padding:11px;
+                                        margin-top:6px;
+                                        border:1px solid #d1d5db;
+                                        border-radius:8px;
+                                    "
+                                >
+
+                                    <option
+                                        value="active"
+                                        ${site.status === "active"
+                                            ? "selected"
+                                            : ""}
+                                    >
+                                        Active
+                                    </option>
+
+                                    <option
+                                        value="inactive"
+                                        ${site.status === "inactive"
+                                            ? "selected"
+                                            : ""}
+                                    >
+                                        Inactive
+                                    </option>
+
+                                    <option
+                                        value="pending"
+                                        ${site.status === "pending"
+                                            ? "selected"
+                                            : ""}
+                                    >
+                                        Pending
+                                    </option>
+
+                                    <option
+                                        value="error"
+                                        ${site.status === "error"
+                                            ? "selected"
+                                            : ""}
+                                    >
+                                        Error
+                                    </option>
+
+                                </select>
+
+                            </label>
+
+
+                            <label
+                                style="
+                                    display:block;
+                                    margin-bottom:22px;
+                                "
+                            >
+
+                                <strong>
+                                    Crawl Frequency
+                                </strong>
+
+                                <select
+                                    id="editWebsiteFrequency"
+                                    style="
+                                        width:100%;
+                                        padding:11px;
+                                        margin-top:6px;
+                                        border:1px solid #d1d5db;
+                                        border-radius:8px;
+                                    "
+                                >
+
+                                    <option
+                                        value="manual"
+                                        ${site.crawl_frequency === "manual"
+                                            ? "selected"
+                                            : ""}
+                                    >
+                                        Manual
+                                    </option>
+
+                                    <option
+                                        value="hourly"
+                                        ${site.crawl_frequency === "hourly"
+                                            ? "selected"
+                                            : ""}
+                                    >
+                                        Hourly
+                                    </option>
+
+                                    <option
+                                        value="daily"
+                                        ${site.crawl_frequency === "daily"
+                                            ? "selected"
+                                            : ""}
+                                    >
+                                        Daily
+                                    </option>
+
+                                    <option
+                                        value="weekly"
+                                        ${site.crawl_frequency === "weekly"
+                                            ? "selected"
+                                            : ""}
+                                    >
+                                        Weekly
+                                    </option>
+
+                                    <option
+                                        value="monthly"
+                                        ${site.crawl_frequency === "monthly"
+                                            ? "selected"
+                                            : ""}
+                                    >
+                                        Monthly
+                                    </option>
+
+                                </select>
+
+                            </label>
+
+
+                            <div
+                                style="
+                                    display:flex;
+                                    justify-content:flex-end;
+                                    gap:10px;
+                                "
+                            >
+
+                                <button
+                                    type="button"
+                                    id="cancelWebsiteEdit"
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="button"
+                                    id="saveWebsiteEdit"
+                                >
+                                    Save Changes
+                                </button>
+
+                            </div>
+
+                        </div>
+                    `;
+
+
+                    document.body.appendChild(
+                        modal
+                    );
+
+
+                    const close =
+                        () =>
+                            modal.remove();
+
+
+                    $("closeWebsiteEdit").onclick =
+                        close;
+
+                    $("cancelWebsiteEdit").onclick =
+                        close;
+
+
+                    $("saveWebsiteEdit").onclick =
+                        async () => {
+
+                            const saveButton =
+                                $("saveWebsiteEdit");
+
+
+                            const name =
+                                $("editWebsiteName")
+                                    .value
+                                    .trim();
+
+                            const url =
+                                $("editWebsiteUrl")
+                                    .value
+                                    .trim();
+
+                            const status =
+                                $("editWebsiteStatus")
+                                    .value;
+
+                            const crawlFrequency =
+                                $("editWebsiteFrequency")
+                                    .value;
+
+
+                            if (!name) {
+
+                                showMessage(
+                                    "Website name is required.",
+                                    "error"
+                                );
+
+                                return;
+
+                            }
+
+
+                            try {
+
+                                saveButton.disabled =
+                                    true;
+
+                                saveButton.textContent =
+                                    "Saving...";
+
+
+                                await adminAction(
+                                    "update_website",
+                                    {
+                                        website_id:
+                                            site.id,
+
+                                        name,
+
+                                        url,
+
+                                        status,
+
+                                        crawl_frequency:
+                                            crawlFrequency
+                                    }
+                                );
+
+
+                                showMessage(
+                                    "Website updated successfully."
+                                );
+
+
+                                close();
+
+                                await loadWebsites();
+
+
+                            } catch (
+                                error
+                            ) {
+
+                                console.error(
+                                    "Website update error:",
+                                    error
+                                );
+
+
+                                showMessage(
+                                    error.message ||
+                                    "Unable to update website.",
+                                    "error"
+                                );
+
+
+                                saveButton.disabled =
+                                    false;
+
+                                saveButton.textContent =
+                                    "Save Changes";
+
+                            }
+
+                        };
+
+
+                    modal.addEventListener(
+                        "click",
+                        event => {
+
+                            if (
+                                event.target ===
+                                modal
+                            ) {
+
+                                close();
+
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+        }
+    );
+
+    /* =====================================================
+   DELETE WEBSITE
+===================================================== */
+
+document
+    .querySelectorAll(
+        ".website-delete-btn"
+    )
+    .forEach(
+        button => {
+
+            button.addEventListener(
+                "click",
+                async () => {
+
+                    const index =
+                        Number(
+                            button.dataset.index
+                        );
+
+                    const site =
+                        websites[index];
+
+
+                    if (!site) {
+                        return;
+                    }
+
+
+                    const confirmed =
+                        confirm(
+                            `Delete "${site.name || "this website"}"?\n\nThis action cannot be undone.`
+                        );
+
+
+                    if (!confirmed) {
+                        return;
+                    }
+
+
+                    try {
+
+                        button.disabled =
+                            true;
+
+                        button.textContent =
+                            "Deleting...";
+
+
+                        await adminAction(
+                            "delete_website",
+                            {
+                                website_id:
+                                    site.id
+                            }
+                        );
+
+
+                        showMessage(
+                            "Website deleted successfully."
+                        );
+
+
+                        await loadWebsites();
+
+
+                    } catch (
+                        error
+                    ) {
+
+                        console.error(
+                            "Website delete error:",
+                            error
+                        );
+
+
+                        showMessage(
+                            error.message ||
+                            "Unable to delete website.",
+                            "error"
+                        );
+
+
+                        button.disabled =
+                            false;
+
+                        button.textContent =
+                            "Delete";
+
+                    }
+
+                }
+            );
+
+        }
+    );
 
 
 /* =========================================================
