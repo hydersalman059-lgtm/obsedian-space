@@ -1,25 +1,38 @@
 /* =========================================================
-OBSEDIAN.SPACE ADMIN PANEL Complete Admin Frontend
+   OBSEDIAN.SPACE
+   ADMIN PANEL
+   Complete Admin Frontend
 ========================================================= */
 
-“use strict”;
+"use strict";
 
-/* ========================================================= SUPABASE
+/* =========================================================
+   SUPABASE
 ========================================================= */
 
-const sb = supabase.createClient( window.OBSEDIAN_CONFIG.SUPABASE_URL,
-window.OBSEDIAN_CONFIG.SUPABASE_PUBLISHABLE_KEY );
+const sb = supabase.createClient(
+    window.OBSEDIAN_CONFIG.SUPABASE_URL,
+    window.OBSEDIAN_CONFIG.SUPABASE_PUBLISHABLE_KEY
+);
 
-/* ========================================================= GLOBAL
-STATE ========================================================= */
 
-let session = null; let currentSection = “dashboard”; let currentUsers =
-[]; let currentPlans = []; let currentBranding = null;
+/* =========================================================
+   GLOBAL STATE
+========================================================= */
 
-/* ========================================================= HELPERS
+let session = null;
+let currentSection = "dashboard";
+let currentUsers = [];
+let currentPlans = [];
+let currentBranding = null;
+
+
+/* =========================================================
+   HELPERS
 ========================================================= */
 
 const $ = (id) => document.getElementById(id);
+
 
 function escapeHtml(value) {
 
@@ -33,8 +46,8 @@ function escapeHtml(value) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
-
 }
+
 
 function formatDate(value) {
 
@@ -56,8 +69,8 @@ function formatDate(value) {
 
         return value;
     }
-
 }
+
 
 function formatDateOnly(value) {
 
@@ -80,10 +93,10 @@ function formatDateOnly(value) {
 
         return value;
     }
-
 }
 
-function showMessage(message, type = “success”) {
+
+function showMessage(message, type = "success") {
 
     let box = $("adminMessage");
 
@@ -135,10 +148,10 @@ function showMessage(message, type = “success”) {
             box.remove();
 
         }, 4000);
-
 }
 
-function loading(message = “Loading…”) {
+
+function loading(message = "Loading...") {
 
     const content = $("content");
 
@@ -151,14 +164,15 @@ function loading(message = “Loading…”) {
             <p>${escapeHtml(message)}</p>
         </div>
     `;
-
 }
 
-/* ========================================================= LOADING
-COMPATIBILITY =========================================================
-*/
 
-function showLoading(message = “Loading…”) { loading(message); }
+/* =========================================================
+   LOADING COMPATIBILITY
+========================================================= */
+
+
+
 
 function errorBox(message) {
 
@@ -190,18 +204,25 @@ function errorBox(message) {
 
         };
     }
-
 }
 
-/* ========================================================= LOADING
-COMPATIBILITY =========================================================
-*/
 
-function showLoading(message = “Loading…”) { loading(message); }
 
-function formatDateTime(value) { return formatDate(value); }
+/* =========================================================
+   LOADING COMPATIBILITY
+========================================================= */
 
-/* ========================================================= AUTH
+function showLoading(message = "Loading...") {
+    loading(message);
+}
+
+function formatDateTime(value) {
+    return formatDate(value);
+}
+
+
+/* =========================================================
+   AUTH
 ========================================================= */
 
 async function getSession() {
@@ -213,8 +234,8 @@ async function getSession() {
         result?.data?.session || null;
 
     return session;
-
 }
+
 
 async function requireSession() {
 
@@ -230,13 +251,17 @@ async function requireSession() {
     }
 
     return current;
-
 }
 
-/* ========================================================= ADMIN API
+
+/* =========================================================
+   ADMIN API
 ========================================================= */
 
-async function api( section, options = {} ) {
+async function api(
+    section,
+    options = {}
+) {
 
     const current =
         await requireSession();
@@ -350,20 +375,24 @@ async function api( section, options = {} ) {
 
 
     return data;
-
 }
 
-/* ========================================================= GENERIC
-ADMIN ACTION =========================================================
-*/
 
-async function adminAction( action, payload = {} ) {
+/* =========================================================
+   GENERIC ADMIN ACTION
+========================================================= */
 
+async function adminAction(
+    action,
+    payload = {}
+) {
     const current =
         await requireSession();
 
     if (!current) {
-        return null;
+        throw new Error(
+            "Admin session is not available."
+        );
     }
 
 
@@ -379,19 +408,43 @@ async function adminAction( action, payload = {} ) {
     );
 
 
+    /*
+     * IMPORTANT:
+     *
+     * Do NOT require an admin-section mapping here.
+     *
+     * The Edge Function receives the action directly
+     * in the POST body and handles the action.
+     *
+     * This allows actions such as:
+     *
+     * update_website
+     * delete_website
+     * approve_approval
+     * reject_approval
+     * update_user
+     * pause_subscription
+     * resume_subscription
+     * etc.
+     *
+     * without maintaining a second frontend mapping table.
+     */
+
+
     const response =
         await fetch(
             url,
             {
-                method: "POST",
+                method:
+                    "POST",
 
                 headers: {
-
                     Authorization:
                         `Bearer ${current.access_token}`,
 
                     apikey:
-                        window.OBSEDIAN_CONFIG
+                        window
+                            .OBSEDIAN_CONFIG
                             .SUPABASE_PUBLISHABLE_KEY,
 
                     "Content-Type":
@@ -413,6 +466,7 @@ async function adminAction( action, payload = {} ) {
 
     let data = {};
 
+
     try {
 
         data =
@@ -423,7 +477,9 @@ async function adminAction( action, payload = {} ) {
     } catch {
 
         data = {
-            error: raw
+            error:
+                raw ||
+                "Invalid server response."
         };
     }
 
@@ -432,6 +488,7 @@ async function adminAction( action, payload = {} ) {
         "Admin action status:",
         response.status
     );
+
 
     console.log(
         "Admin action response:",
@@ -450,13 +507,15 @@ async function adminAction( action, payload = {} ) {
 
 
     return data;
-
 }
 
-/* ========================================================= NAVIGATION
+/* =========================================================
+   NAVIGATION
 ========================================================= */
 
-function setActiveNav( section ) {
+function setActiveNav(
+    section
+) {
 
     document
         .querySelectorAll(
@@ -473,10 +532,12 @@ function setActiveNav( section ) {
 
             }
         );
-
 }
 
-function sectionTitle( section ) {
+
+function sectionTitle(
+    section
+) {
 
     const titles = {
 
@@ -515,13 +576,16 @@ function sectionTitle( section ) {
         titles[section] ||
         "Admin Panel"
     );
-
 }
 
-/* ========================================================= LOAD
-SECTION ========================================================= */
 
-async function loadSection( section ) {
+/* =========================================================
+   LOAD SECTION
+========================================================= */
+
+async function loadSection(
+    section
+) {
 
     currentSection =
         section;
@@ -635,10 +699,11 @@ async function loadSection( section ) {
             "Unable to load admin section."
         );
     }
-
 }
 
-/* ========================================================= DASHBOARD
+
+/* =========================================================
+   DASHBOARD
 ========================================================= */
 
 async function loadDashboard() {
@@ -846,10 +911,11 @@ async function loadDashboard() {
                     "dashboard"
                 );
     }
-
 }
 
-/* ========================================================= USERS
+
+/* =========================================================
+   USERS
 ========================================================= */
 
 async function loadUsers() {
@@ -981,13 +1047,16 @@ async function loadUsers() {
 
 
     await renderUsers();
-
 }
 
-/* ========================================================= USERS TABLE
+
+/* =========================================================
+   USERS TABLE
 ========================================================= */
 
-function renderUsersTable( users ) {
+function renderUsersTable(
+    users
+) {
 
     const wrapper =
         $("usersTable");
@@ -1232,13 +1301,16 @@ function renderUsersTable( users ) {
 
             }
         );
-
 }
 
-/* ========================================================= USER
-MANAGER ========================================================= */
 
-async function openUserManager( userId ) {
+/* =========================================================
+   USER MANAGER
+========================================================= */
+
+async function openUserManager(
+    userId
+) {
 
     const user =
         currentUsers.find(
@@ -1952,10 +2024,11 @@ async function openUserManager( userId ) {
                 );
             }
         };
-
 }
 
-/* ========================================================= WEBSITES
+
+/* =========================================================
+   WEBSITES
 ========================================================= */
 
 async function loadWebsites() {
@@ -2175,9 +2248,11 @@ async function loadWebsites() {
         gap:6px;
         flex-wrap:wrap;
     "
-
-  <button type=“button” class=“website-view-btn” data-index=“${index}”
-
+>
+    <button
+        type="button"
+        class="website-view-btn"
+        data-index="${index}"
     >
         View
     </button>
@@ -2201,6 +2276,7 @@ async function loadWebsites() {
     >
         Delete
     </button>
+</div>
 
                                         </td>
 
@@ -2313,6 +2389,7 @@ async function loadWebsites() {
             </div>
 
         `;
+        bindWebsiteEditDeleteButtons(websites);
 
 
         /* =====================================================
@@ -2807,344 +2884,389 @@ async function loadWebsites() {
 
 }
 
-/* ===================================================== EDIT WEBSITE
+/* =====================================================
+   WEBSITE BUTTON HANDLERS
+   IMPORTANT:
+   These buttons are dynamically created by loadWebsites(),
+   so listeners MUST be attached after rendering.
 ===================================================== */
 
-document .querySelectorAll( “.website-edit-btn” ) .forEach( button => {
+function bindWebsiteEditDeleteButtons(websites) {
 
-            button.addEventListener(
-                "click",
-                () => {
+    /* =====================================================
+       EDIT WEBSITE
+    ===================================================== */
 
-                    const index =
-                        Number(
-                            button.dataset.index
-                        );
+    document
+        .querySelectorAll(".website-edit-btn")
+        .forEach(button => {
 
-                    const site =
-                        websites[index];
+            button.addEventListener("click", () => {
 
+                const index =
+                    Number(button.dataset.index);
 
-                    if (!site) {
-                        return;
-                    }
+                const site =
+                    websites[index];
 
+                if (!site) {
+                    console.error(
+                        "Website not found for edit:",
+                        index
+                    );
+                    return;
+                }
 
-                    const modal =
-                        document.createElement(
-                            "div"
-                        );
+                const modal =
+                    document.createElement("div");
 
+                modal.style.cssText = `
+                    position:fixed;
+                    inset:0;
+                    background:rgba(0,0,0,.55);
+                    z-index:10000;
+                    padding:20px;
+                    overflow:auto;
+                `;
 
-                    modal.style.cssText = `
-                        position:fixed;
-                        inset:0;
-                        background:rgba(0,0,0,.55);
-                        z-index:10000;
-                        padding:20px;
-                        overflow:auto;
-                    `;
+                modal.innerHTML = `
+                    <div style="
+                        max-width:650px;
+                        margin:60px auto;
+                        background:#fff;
+                        border-radius:14px;
+                        padding:24px;
+                        box-shadow:0 20px 60px rgba(0,0,0,.25);
+                    ">
 
+                        <div style="
+                            display:flex;
+                            justify-content:space-between;
+                            align-items:center;
+                            margin-bottom:20px;
+                        ">
 
-                    modal.innerHTML = `
-                        <div
-                            style="
-                                max-width:650px;
-                                margin:60px auto;
-                                background:#fff;
-                                border-radius:14px;
-                                padding:24px;
-                                box-shadow:0 20px 60px rgba(0,0,0,.25);
-                            "
-                        >
+                            <h2 style="margin:0;">
+                                Edit Website
+                            </h2>
 
-                            <div
+                            <button
+                                type="button"
+                                id="closeWebsiteEdit"
                                 style="
-                                    display:flex;
-                                    justify-content:space-between;
-                                    align-items:center;
-                                    margin-bottom:20px;
+                                    border:0;
+                                    background:none;
+                                    font-size:28px;
+                                    cursor:pointer;
                                 "
                             >
-
-                                <h2 style="margin:0;">
-                                    Edit Website
-                                </h2>
-
-                                <button
-                                    type="button"
-                                    id="closeWebsiteEdit"
-                                >
-                                    ×
-                                </button>
-
-                            </div>
-
-
-                            <label
-                                style="
-                                    display:block;
-                                    margin-bottom:16px;
-                                "
-                            >
-
-                                <strong>
-                                    Website Name
-                                </strong>
-
-                                <input
-                                    id="editWebsiteName"
-                                    type="text"
-                                    value="${escapeHtml(
-                                        site.name || ""
-                                    )}"
-                                    style="
-                                        width:100%;
-                                        padding:11px;
-                                        margin-top:6px;
-                                        border:1px solid #d1d5db;
-                                        border-radius:8px;
-                                    "
-                                >
-
-                            </label>
-
-
-                            <label
-                                style="
-                                    display:block;
-                                    margin-bottom:16px;
-                                "
-                            >
-
-                                <strong>
-                                    Website URL
-                                </strong>
-
-                                <input
-                                    id="editWebsiteUrl"
-                                    type="url"
-                                    value="${escapeHtml(
-                                        site.url || ""
-                                    )}"
-                                    placeholder="https://example.com"
-                                    style="
-                                        width:100%;
-                                        padding:11px;
-                                        margin-top:6px;
-                                        border:1px solid #d1d5db;
-                                        border-radius:8px;
-                                    "
-                                >
-
-                            </label>
-
-
-                            <label
-                                style="
-                                    display:block;
-                                    margin-bottom:16px;
-                                "
-                            >
-
-                                <strong>
-                                    Status
-                                </strong>
-
-                                <select
-                                    id="editWebsiteStatus"
-                                    style="
-                                        width:100%;
-                                        padding:11px;
-                                        margin-top:6px;
-                                        border:1px solid #d1d5db;
-                                        border-radius:8px;
-                                    "
-                                >
-
-                                    <option
-                                        value="active"
-                                        ${site.status === "active"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Active
-                                    </option>
-
-                                    <option
-                                        value="inactive"
-                                        ${site.status === "inactive"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Inactive
-                                    </option>
-
-                                    <option
-                                        value="pending"
-                                        ${site.status === "pending"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Pending
-                                    </option>
-
-                                    <option
-                                        value="error"
-                                        ${site.status === "error"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Error
-                                    </option>
-
-                                </select>
-
-                            </label>
-
-
-                            <label
-                                style="
-                                    display:block;
-                                    margin-bottom:22px;
-                                "
-                            >
-
-                                <strong>
-                                    Crawl Frequency
-                                </strong>
-
-                                <select
-                                    id="editWebsiteFrequency"
-                                    style="
-                                        width:100%;
-                                        padding:11px;
-                                        margin-top:6px;
-                                        border:1px solid #d1d5db;
-                                        border-radius:8px;
-                                    "
-                                >
-
-                                    <option
-                                        value="manual"
-                                        ${site.crawl_frequency === "manual"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Manual
-                                    </option>
-
-                                    <option
-                                        value="hourly"
-                                        ${site.crawl_frequency === "hourly"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Hourly
-                                    </option>
-
-                                    <option
-                                        value="daily"
-                                        ${site.crawl_frequency === "daily"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Daily
-                                    </option>
-
-                                    <option
-                                        value="weekly"
-                                        ${site.crawl_frequency === "weekly"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Weekly
-                                    </option>
-
-                                    <option
-                                        value="monthly"
-                                        ${site.crawl_frequency === "monthly"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Monthly
-                                    </option>
-
-                                </select>
-
-                            </label>
-
-
-                            <div
-                                style="
-                                    display:flex;
-                                    justify-content:flex-end;
-                                    gap:10px;
-                                "
-                            >
-
-                                <button
-                                    type="button"
-                                    id="cancelWebsiteEdit"
-                                >
-                                    Cancel
-                                </button>
-
-                                <button
-                                    type="button"
-                                    id="saveWebsiteEdit"
-                                >
-                                    Save Changes
-                                </button>
-
-                            </div>
+                                ×
+                            </button>
 
                         </div>
-                    `;
 
+                        <label style="
+                            display:block;
+                            margin-bottom:16px;
+                        ">
 
-                    document.body.appendChild(
-                        modal
+                            <strong>
+                                Website Name
+                            </strong>
+
+                            <input
+                                id="editWebsiteName"
+                                type="text"
+                                value="${escapeHtml(
+                                    site.name || ""
+                                )}"
+                                style="
+                                    width:100%;
+                                    padding:11px;
+                                    margin-top:6px;
+                                    border:1px solid #d1d5db;
+                                    border-radius:8px;
+                                    box-sizing:border-box;
+                                "
+                            >
+
+                        </label>
+
+                        <label style="
+                            display:block;
+                            margin-bottom:16px;
+                        ">
+
+                            <strong>
+                                Website URL
+                            </strong>
+
+                            <input
+                                id="editWebsiteUrl"
+                                type="url"
+                                value="${escapeHtml(
+                                    site.url || ""
+                                )}"
+                                placeholder="https://example.com"
+                                style="
+                                    width:100%;
+                                    padding:11px;
+                                    margin-top:6px;
+                                    border:1px solid #d1d5db;
+                                    border-radius:8px;
+                                    box-sizing:border-box;
+                                "
+                            >
+
+                        </label>
+
+                        <label style="
+                            display:block;
+                            margin-bottom:16px;
+                        ">
+
+                            <strong>
+                                Status
+                            </strong>
+
+                            <select
+                                id="editWebsiteStatus"
+                                style="
+                                    width:100%;
+                                    padding:11px;
+                                    margin-top:6px;
+                                    border:1px solid #d1d5db;
+                                    border-radius:8px;
+                                "
+                            >
+
+                                <option
+                                    value="active"
+                                    ${
+                                        site.status === "active"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Active
+                                </option>
+
+                                <option
+                                    value="inactive"
+                                    ${
+                                        site.status === "inactive"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Inactive
+                                </option>
+
+                                <option
+                                    value="pending"
+                                    ${
+                                        site.status === "pending"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Pending
+                                </option>
+
+                                <option
+                                    value="error"
+                                    ${
+                                        site.status === "error"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Error
+                                </option>
+
+                            </select>
+
+                        </label>
+
+                        <label style="
+                            display:block;
+                            margin-bottom:20px;
+                        ">
+
+                            <strong>
+                                Crawl Frequency
+                            </strong>
+
+                            <select
+                                id="editWebsiteCrawl"
+                                style="
+                                    width:100%;
+                                    padding:11px;
+                                    margin-top:6px;
+                                    border:1px solid #d1d5db;
+                                    border-radius:8px;
+                                "
+                            >
+
+                                <option
+                                    value="manual"
+                                    ${
+                                        site.crawl_frequency === "manual"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Manual
+                                </option>
+
+                                <option
+                                    value="hourly"
+                                    ${
+                                        site.crawl_frequency === "hourly"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Hourly
+                                </option>
+
+                                <option
+                                    value="daily"
+                                    ${
+                                        site.crawl_frequency === "daily"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Daily
+                                </option>
+
+                                <option
+                                    value="weekly"
+                                    ${
+                                        site.crawl_frequency === "weekly"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Weekly
+                                </option>
+
+                                <option
+                                    value="monthly"
+                                    ${
+                                        site.crawl_frequency === "monthly"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Monthly
+                                </option>
+
+                            </select>
+
+                        </label>
+
+                        <div style="
+                            display:flex;
+                            justify-content:flex-end;
+                            gap:10px;
+                        ">
+
+                            <button
+                                type="button"
+                                id="cancelWebsiteEdit"
+                                style="
+                                    padding:10px 18px;
+                                    border:1px solid #d1d5db;
+                                    background:#fff;
+                                    border-radius:8px;
+                                    cursor:pointer;
+                                "
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                id="saveWebsiteEdit"
+                                style="
+                                    padding:10px 18px;
+                                    border:0;
+                                    background:#2563eb;
+                                    color:#fff;
+                                    border-radius:8px;
+                                    cursor:pointer;
+                                "
+                            >
+                                Save Changes
+                            </button>
+
+                        </div>
+
+                    </div>
+                `;
+
+                document.body.appendChild(modal);
+
+                const close = () => {
+                    modal.remove();
+                };
+
+                document
+                    .getElementById("closeWebsiteEdit")
+                    ?.addEventListener(
+                        "click",
+                        close
                     );
 
+                document
+                    .getElementById("cancelWebsiteEdit")
+                    ?.addEventListener(
+                        "click",
+                        close
+                    );
 
-                    const close =
-                        () =>
-                            modal.remove();
-
-
-                    $("closeWebsiteEdit").onclick =
-                        close;
-
-                    $("cancelWebsiteEdit").onclick =
-                        close;
-
-
-                    $("saveWebsiteEdit").onclick =
+                document
+                    .getElementById("saveWebsiteEdit")
+                    ?.addEventListener(
+                        "click",
                         async () => {
 
                             const saveButton =
-                                $("saveWebsiteEdit");
-
+                                document.getElementById(
+                                    "saveWebsiteEdit"
+                                );
 
                             const name =
-                                $("editWebsiteName")
-                                    .value
+                                document
+                                    .getElementById(
+                                        "editWebsiteName"
+                                    )
+                                    ?.value
                                     .trim();
 
                             const url =
-                                $("editWebsiteUrl")
-                                    .value
+                                document
+                                    .getElementById(
+                                        "editWebsiteUrl"
+                                    )
+                                    ?.value
                                     .trim();
 
                             const status =
-                                $("editWebsiteStatus")
-                                    .value;
+                                document
+                                    .getElementById(
+                                        "editWebsiteStatus"
+                                    )
+                                    ?.value;
 
                             const crawlFrequency =
-                                $("editWebsiteFrequency")
-                                    .value;
-
+                                document
+                                    .getElementById(
+                                        "editWebsiteCrawl"
+                                    )
+                                    ?.value;
 
                             if (!name) {
 
@@ -3154,9 +3276,20 @@ document .querySelectorAll( “.website-edit-btn” ) .forEach( button => {
                                 );
 
                                 return;
-
                             }
 
+                            if (
+                                url &&
+                                !/^https?:\/\/.+/i.test(url)
+                            ) {
+
+                                showMessage(
+                                    "Website URL must start with http:// or https://.",
+                                    "error"
+                                );
+
+                                return;
+                            }
 
                             try {
 
@@ -3166,6 +3299,18 @@ document .querySelectorAll( “.website-edit-btn” ) .forEach( button => {
                                 saveButton.textContent =
                                     "Saving...";
 
+                                console.log(
+                                    "[ADMIN] Updating website:",
+                                    {
+                                        website_id:
+                                            site.id,
+                                        name,
+                                        url,
+                                        status,
+                                        crawl_frequency:
+                                            crawlFrequency
+                                    }
+                                );
 
                                 await adminAction(
                                     "update_website",
@@ -3184,73 +3329,62 @@ document .querySelectorAll( “.website-edit-btn” ) .forEach( button => {
                                     }
                                 );
 
-
                                 showMessage(
                                     "Website updated successfully."
                                 );
-
 
                                 close();
 
                                 await loadWebsites();
 
-
-                            } catch (
-                                error
-                            ) {
+                            } catch (error) {
 
                                 console.error(
                                     "Website update error:",
                                     error
                                 );
 
-
                                 showMessage(
-                                    error.message ||
+                                    error?.message ||
                                     "Unable to update website.",
                                     "error"
                                 );
-
 
                                 saveButton.disabled =
                                     false;
 
                                 saveButton.textContent =
                                     "Save Changes";
-
                             }
-
-                        };
-
-
-                    modal.addEventListener(
-                        "click",
-                        event => {
-
-                            if (
-                                event.target ===
-                                modal
-                            ) {
-
-                                close();
-
-                            }
-
                         }
                     );
 
-                }
-            );
+                modal.addEventListener(
+                    "click",
+                    event => {
 
-        }
-    );
+                        if (
+                            event.target ===
+                            modal
+                        ) {
+                            close();
+                        }
+
+                    }
+                );
+
+            });
+
+        });
+
 
     /* =====================================================
+       DELETE WEBSITE
+    ===================================================== */
 
-DELETE WEBSITE ===================================================== */
-
-document .querySelectorAll( “.website-delete-btn” ) .forEach( button =>
-{
+    document
+        .querySelectorAll(".website-delete-btn")
+        .forEach(button => {
 
             button.addEventListener(
                 "click",
@@ -3264,22 +3398,24 @@ document .querySelectorAll( “.website-delete-btn” ) .forEach( button =>
                     const site =
                         websites[index];
 
-
                     if (!site) {
+
+                        console.error(
+                            "Website not found for delete:",
+                            index
+                        );
+
                         return;
                     }
-
 
                     const confirmed =
                         confirm(
                             `Delete "${site.name || "this website"}"?\n\nThis action cannot be undone.`
                         );
 
-
                     if (!confirmed) {
                         return;
                     }
-
 
                     try {
 
@@ -3289,6 +3425,10 @@ document .querySelectorAll( “.website-delete-btn” ) .forEach( button =>
                         button.textContent =
                             "Deleting...";
 
+                        console.log(
+                            "[ADMIN] Deleting website:",
+                            site.id
+                        );
 
                         await adminAction(
                             "delete_website",
@@ -3298,49 +3438,42 @@ document .querySelectorAll( “.website-delete-btn” ) .forEach( button =>
                             }
                         );
 
-
                         showMessage(
                             "Website deleted successfully."
                         );
 
-
                         await loadWebsites();
 
-
-                    } catch (
-                        error
-                    ) {
+                    } catch (error) {
 
                         console.error(
                             "Website delete error:",
                             error
                         );
 
-
                         showMessage(
-                            error.message ||
+                            error?.message ||
                             "Unable to delete website.",
                             "error"
                         );
-
 
                         button.disabled =
                             false;
 
                         button.textContent =
                             "Delete";
-
                     }
 
                 }
             );
 
-        }
-    );
+        });
+
+}
 
 /* =========================================================
-SUBSCRIPTIONS =========================================================
-*/
+   SUBSCRIPTIONS
+========================================================= */
 
 async function loadSubscriptions() {
 
@@ -4409,7 +4542,8 @@ async function loadSubscriptions() {
 
 }
 
-/* ========================================================= PAYMENTS
+/* =========================================================
+   PAYMENTS
 ========================================================= */
 
 async function loadPayments() {
@@ -5468,8 +5602,9 @@ async function loadPayments() {
 
 }
 
-/* ========================================================= AI
-OPERATIONS ========================================================= */
+/* =========================================================
+   AI OPERATIONS
+========================================================= */
 
 async function loadAI() {
 
@@ -5668,146 +5803,217 @@ async function loadAI() {
     $("aiRefresh").onclick =
         () =>
             loadAI();
-
 }
 
-/* ========================================================= APPROVALS
+
+/* =========================================================
+   APPROVALS
 ========================================================= */
 
 async function loadApprovals() {
+    loading("Loading approvals...");
 
-    loading(
-        "Loading approvals..."
-    );
+    try {
+        const data = await api("approvals");
 
+        const approvals = Array.isArray(data?.approvals)
+            ? data.approvals
+            : [];
 
-    const data =
-        await api(
-            "approvals"
-        );
+        $("content").innerHTML = `
+            <div class="card">
 
+                <div class="admin-header">
 
-    const approvals =
-        data.approvals || [];
+                    <div>
+                        <h2>Approvals</h2>
 
+                        <p>
+                            ${approvals.length}
+                            approval record(s).
+                        </p>
+                    </div>
 
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <div class="admin-header">
-
-                <div>
-
-                    <h2>
-                        Approvals
-                    </h2>
-
-                    <p>
-                        ${approvals.length}
-                        approval record(s).
-                    </p>
+                    <button
+                        id="approvalsRefresh"
+                        type="button"
+                    >
+                        Refresh
+                    </button>
 
                 </div>
 
-                <button
-                    id="approvalsRefresh"
-                >
-                    Refresh
-                </button>
 
-            </div>
+                ${
+                    approvals.length
+                        ? `
 
-
-            ${
-                approvals.length
-                    ? `
-
-                    <div class="admin-table-wrapper">
+                    <div style="
+                        overflow-x:auto;
+                    ">
 
                         <table class="admin-table">
 
                             <thead>
 
                                 <tr>
-
-                                    <th>
-                                        Title
-                                    </th>
-
-                                    <th>
-                                        User
-                                    </th>
-
-                                    <th>
-                                        Status
-                                    </th>
-
-                                    <th>
-                                        Risk
-                                    </th>
-
-                                    <th>
-                                        Created
-                                    </th>
-
+                                    <th>Title</th>
+                                    <th>User</th>
+                                    <th>Action</th>
+                                    <th>Status</th>
+                                    <th>Risk</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
                                 </tr>
 
                             </thead>
 
                             <tbody>
 
-                                ${approvals
-                                    .map(
-                                        item => `
+                                ${approvals.map((approval, index) => {
 
+                                    const status =
+                                        String(
+                                            approval.status || ""
+                                        ).toLowerCase();
+
+                                    const risk =
+                                        String(
+                                            approval.risk_level || "medium"
+                                        ).toLowerCase();
+
+                                    return `
                                         <tr>
 
                                             <td>
-                                                ${escapeHtml(
-                                                    item.title ||
-                                                    "—"
-                                                )}
-                                            </td>
-
-                                            <td>
-                                                ${escapeHtml(
-                                                    item.user_id ||
-                                                    "—"
-                                                )}
-                                            </td>
-
-                                            <td>
-
-                                                <span class="badge">
-
+                                                <strong>
                                                     ${escapeHtml(
-                                                        item.status ||
-                                                        "—"
+                                                        approval.title ||
+                                                        "Untitled approval"
                                                     )}
+                                                </strong>
 
+                                                ${
+                                                    approval.description
+                                                        ? `
+                                                        <div style="
+                                                            margin-top:5px;
+                                                            color:#6b7280;
+                                                            font-size:13px;
+                                                        ">
+                                                            ${escapeHtml(
+                                                                approval.description
+                                                            )}
+                                                        </div>
+                                                        `
+                                                        : ""
+                                                }
+                                            </td>
+
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    approval.user_email ||
+                                                    approval.user_name ||
+                                                    approval.user_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    approval.action_type ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+
+                                            <td>
+
+                                                <span
+                                                    class="status-badge status-${escapeHtml(
+                                                        status
+                                                    )}"
+                                                >
+                                                    ${escapeHtml(
+                                                        status || "unknown"
+                                                    )}
                                                 </span>
 
                                             </td>
 
+
                                             <td>
-                                                ${escapeHtml(
-                                                    item.risk_level ||
-                                                    "—"
-                                                )}
+
+                                                <span
+                                                    class="status-badge risk-${escapeHtml(
+                                                        risk
+                                                    )}"
+                                                >
+                                                    ${escapeHtml(
+                                                        risk
+                                                    )}
+                                                </span>
+
                                             </td>
+
 
                                             <td>
                                                 ${formatDate(
-                                                    item.created_at
+                                                    approval.created_at
                                                 )}
                                             </td>
 
-                                        </tr>
 
-                                    `
-                                    )
-                                    .join("")}
+                                            <td>
+
+                                                <div style="
+                                                    display:flex;
+                                                    gap:7px;
+                                                    flex-wrap:wrap;
+                                                ">
+
+                                                    <button
+                                                        type="button"
+                                                        class="approval-view-btn"
+                                                        data-index="${index}"
+                                                    >
+                                                        View
+                                                    </button>
+
+                                                    ${
+                                                        status ===
+                                                        "pending"
+                                                            ? `
+
+                                                        <button
+                                                            type="button"
+                                                            class="approval-approve-btn"
+                                                            data-index="${index}"
+                                                        >
+                                                            Approve
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            class="approval-reject-btn"
+                                                            data-index="${index}"
+                                                        >
+                                                            Reject
+                                                        </button>
+
+                                                    `
+                                                            : ""
+                                                    }
+
+                                                </div>
+
+                                            </td>
+
+                                        </tr>
+                                    `;
+                                }).join("")}
 
                             </tbody>
 
@@ -5816,25 +6022,744 @@ async function loadApprovals() {
                     </div>
 
                 `
-                    : `
-                    <div class="empty">
-                        No approval records found.
+                        : `
+                    <div class="empty-state">
+
+                        <div style="
+                            font-size:42px;
+                            margin-bottom:10px;
+                        ">
+                            ✓
+                        </div>
+
+                        <h3>
+                            No approval records found.
+                        </h3>
+
+                        <p>
+                            There are currently no approval
+                            requests to review.
+                        </p>
+
                     </div>
                 `
-            }
+                }
+
+            </div>
+        `;
+
+
+        /* =====================================================
+           REFRESH
+        ===================================================== */
+
+        const refreshButton =
+            $("approvalsRefresh");
+
+        if (refreshButton) {
+
+            refreshButton.onclick =
+                async () => {
+
+                    refreshButton.disabled =
+                        true;
+
+                    refreshButton.textContent =
+                        "Refreshing...";
+
+                    try {
+
+                        await loadApprovals();
+
+                    } finally {
+
+                        const current =
+                            $("approvalsRefresh");
+
+                        if (current) {
+
+                            current.disabled =
+                                false;
+
+                            current.textContent =
+                                "Refresh";
+                        }
+                    }
+                };
+        }
+
+
+        /* =====================================================
+           VIEW
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".approval-view-btn"
+            )
+            .forEach(button => {
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
+
+                        const approval =
+                            approvals[index];
+
+                        if (!approval) {
+                            return;
+                        }
+
+                        showApprovalDetails(
+                            approval
+                        );
+                    }
+                );
+
+            });
+
+
+        /* =====================================================
+           APPROVE
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".approval-approve-btn"
+            )
+            .forEach(button => {
+
+                button.addEventListener(
+                    "click",
+                    async () => {
+
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
+
+                        const approval =
+                            approvals[index];
+
+                        if (!approval) {
+                            return;
+                        }
+
+
+                        if (
+                            String(
+                                approval.status
+                            ).toLowerCase() !==
+                            "pending"
+                        ) {
+
+                            showMessage(
+                                "Only pending approvals can be approved.",
+                                "error"
+                            );
+
+                            return;
+                        }
+
+
+                        const confirmed =
+                            confirm(
+                                `Approve "${approval.title || "this approval"}"?`
+                            );
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+
+                        try {
+
+                            button.disabled =
+                                true;
+
+                            button.textContent =
+                                "Approving...";
+
+
+                            await adminAction(
+                                "approve_approval",
+                                {
+                                    approval_id:
+                                        approval.id
+                                }
+                            );
+
+
+                            showMessage(
+                                "Approval approved successfully."
+                            );
+
+
+                            await loadApprovals();
+
+                        } catch (error) {
+
+                            console.error(
+                                "[ADMIN] Approve approval error:",
+                                error
+                            );
+
+
+                            showMessage(
+                                error?.message ||
+                                "Unable to approve approval.",
+                                "error"
+                            );
+
+
+                            button.disabled =
+                                false;
+
+                            button.textContent =
+                                "Approve";
+                        }
+
+                    }
+                );
+
+            });
+
+
+        /* =====================================================
+           REJECT
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".approval-reject-btn"
+            )
+            .forEach(button => {
+
+                button.addEventListener(
+                    "click",
+                    async () => {
+
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
+
+                        const approval =
+                            approvals[index];
+
+                        if (!approval) {
+                            return;
+                        }
+
+
+                        if (
+                            String(
+                                approval.status
+                            ).toLowerCase() !==
+                            "pending"
+                        ) {
+
+                            showMessage(
+                                "Only pending approvals can be rejected.",
+                                "error"
+                            );
+
+                            return;
+                        }
+
+
+                        const reason =
+                            prompt(
+                                "Enter rejection reason (optional):"
+                            );
+
+
+                        if (
+                            reason === null
+                        ) {
+                            return;
+                        }
+
+
+                        const confirmed =
+                            confirm(
+                                `Reject "${approval.title || "this approval"}"?`
+                            );
+
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+
+                        try {
+
+                            button.disabled =
+                                true;
+
+                            button.textContent =
+                                "Rejecting...";
+
+
+                            await adminAction(
+                                "reject_approval",
+                                {
+                                    approval_id:
+                                        approval.id,
+
+                                    reason:
+                                        reason.trim()
+                                }
+                            );
+
+
+                            showMessage(
+                                "Approval rejected successfully."
+                            );
+
+
+                            await loadApprovals();
+
+                        } catch (error) {
+
+                            console.error(
+                                "[ADMIN] Reject approval error:",
+                                error
+                            );
+
+
+                            showMessage(
+                                error?.message ||
+                                "Unable to reject approval.",
+                                "error"
+                            );
+
+
+                            button.disabled =
+                                false;
+
+                            button.textContent =
+                                "Reject";
+                        }
+
+                    }
+                );
+
+            });
+
+    } catch (error) {
+
+        console.error(
+            "[ADMIN] Unable to load approvals:",
+            error
+        );
+
+
+        $("content").innerHTML = `
+            <div class="card">
+
+                <div class="admin-header">
+
+                    <div>
+                        <h2>Approvals</h2>
+
+                        <p>
+                            Unable to load approval records.
+                        </p>
+                    </div>
+
+                    <button
+                        id="approvalsRetry"
+                        type="button"
+                    >
+                        Retry
+                    </button>
+
+                </div>
+
+
+                <div style="
+                    padding:20px;
+                    color:#b91c1c;
+                    background:#fef2f2;
+                    border-radius:10px;
+                ">
+                    ${escapeHtml(
+                        error?.message ||
+                        "Unknown error."
+                    )}
+                </div>
+
+            </div>
+        `;
+
+
+        const retry =
+            $("approvalsRetry");
+
+        if (retry) {
+
+            retry.onclick =
+                () => loadApprovals();
+        }
+    }
+}
+
+
+/* =========================================================
+   APPROVAL DETAILS
+========================================================= */
+
+function showApprovalDetails(
+    approval
+) {
+
+    const modal =
+        document.createElement(
+            "div"
+        );
+
+
+    modal.style.cssText = `
+        position:fixed;
+        inset:0;
+        z-index:10000;
+        background:rgba(0,0,0,.55);
+        padding:20px;
+        overflow:auto;
+    `;
+
+
+    let proposedChange = "—";
+
+
+    try {
+
+        if (
+            approval.proposed_change !==
+            null &&
+            approval.proposed_change !==
+            undefined
+        ) {
+
+            proposedChange =
+                typeof approval.proposed_change ===
+                "string"
+
+                    ? approval.proposed_change
+
+                    : JSON.stringify(
+                        approval.proposed_change,
+                        null,
+                        2
+                    );
+        }
+
+    } catch (error) {
+
+        proposedChange =
+            String(
+                approval.proposed_change ||
+                "—"
+            );
+    }
+
+
+    modal.innerHTML = `
+
+        <div style="
+            max-width:850px;
+            margin:50px auto;
+            background:#fff;
+            border-radius:16px;
+            padding:25px;
+            box-shadow:0 20px 70px rgba(0,0,0,.3);
+        ">
+
+
+            <div style="
+                display:flex;
+                justify-content:space-between;
+                align-items:center;
+                gap:20px;
+                margin-bottom:20px;
+            ">
+
+                <div>
+
+                    <h2 style="
+                        margin:0 0 5px;
+                    ">
+                        Approval Details
+                    </h2>
+
+                    <div style="
+                        color:#6b7280;
+                        font-size:13px;
+                    ">
+                        ${escapeHtml(
+                            approval.id ||
+                            ""
+                        )}
+                    </div>
+
+                </div>
+
+
+                <button
+                    id="closeApprovalDetails"
+                    type="button"
+                    style="
+                        border:0;
+                        background:none;
+                        font-size:28px;
+                        cursor:pointer;
+                    "
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <div style="
+                display:grid;
+                grid-template-columns:
+                    repeat(
+                        auto-fit,
+                        minmax(220px,1fr)
+                    );
+                gap:15px;
+                margin-bottom:20px;
+            ">
+
+                <div>
+                    <strong>Title</strong>
+
+                    <div>
+                        ${escapeHtml(
+                            approval.title ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Action Type</strong>
+
+                    <div>
+                        ${escapeHtml(
+                            approval.action_type ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Status</strong>
+
+                    <div>
+                        ${escapeHtml(
+                            approval.status ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Risk Level</strong>
+
+                    <div>
+                        ${escapeHtml(
+                            approval.risk_level ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>User ID</strong>
+
+                    <div style="
+                        word-break:break-all;
+                    ">
+                        ${escapeHtml(
+                            approval.user_id ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Website ID</strong>
+
+                    <div style="
+                        word-break:break-all;
+                    ">
+                        ${escapeHtml(
+                            approval.website_id ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Created</strong>
+
+                    <div>
+                        ${formatDate(
+                            approval.created_at
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Approved</strong>
+
+                    <div>
+                        ${formatDate(
+                            approval.approved_at
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Executed</strong>
+
+                    <div>
+                        ${formatDate(
+                            approval.executed_at
+                        )}
+                    </div>
+                </div>
+
+            </div>
+
+
+            <div style="
+                margin-bottom:20px;
+            ">
+
+                <h3>
+                    Description
+                </h3>
+
+                <div style="
+                    white-space:pre-wrap;
+                    color:#374151;
+                ">
+                    ${escapeHtml(
+                        approval.description ||
+                        "No description provided."
+                    )}
+                </div>
+
+            </div>
+
+
+            <div>
+
+                <h3>
+                    Proposed Change
+                </h3>
+
+                <pre style="
+                    background:#111827;
+                    color:#e5e7eb;
+                    padding:16px;
+                    border-radius:10px;
+                    overflow:auto;
+                    max-height:400px;
+                    white-space:pre-wrap;
+                    word-break:break-word;
+                ">${escapeHtml(
+                    proposedChange
+                )}</pre>
+
+            </div>
+
+
+            <div style="
+                display:flex;
+                justify-content:flex-end;
+                margin-top:20px;
+            ">
+
+                <button
+                    id="closeApprovalDetailsBottom"
+                    type="button"
+                >
+                    Close
+                </button>
+
+            </div>
 
         </div>
     `;
 
 
-    $("approvalsRefresh").onclick =
-        () =>
-            loadApprovals();
+    document.body.appendChild(
+        modal
+    );
 
+
+    const close =
+        () => modal.remove();
+
+
+    const closeTop =
+        document.getElementById(
+            "closeApprovalDetails"
+        );
+
+
+    const closeBottom =
+        document.getElementById(
+            "closeApprovalDetailsBottom"
+        );
+
+
+    if (closeTop) {
+        closeTop.onclick = close;
+    }
+
+
+    if (closeBottom) {
+        closeBottom.onclick = close;
+    }
+
+
+    modal.addEventListener(
+        "click",
+        event => {
+
+            if (
+                event.target ===
+                modal
+            ) {
+                close();
+            }
+
+        }
+    );
 }
 
-/* ========================================================= SUPPORT
-TICKETS ========================================================= */
+/* =========================================================
+   SUPPORT TICKETS
+========================================================= */
 
 async function loadSupport() {
 
@@ -6836,9 +7761,19 @@ async function loadSupport() {
 
     }
 
+
+
 }
 
-/* ========================================================= AUDIT LOGS
+
+
+
+
+
+
+
+/* =========================================================
+   AUDIT LOGS
 ========================================================= */
 
 async function loadAudit() {
@@ -7870,7 +8805,18 @@ async function loadAudit() {
 
 }
 
-/* ========================================================= SETTINGS
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   SETTINGS
 ========================================================= */
 
 async function loadSettings() {
@@ -8065,6 +9011,7 @@ async function loadSettings() {
 
                        <small>
     Choose a logo from your computer. PNG, JPG, WEBP or SVG, maximum 3 MB.
+</small>
 
                     </label>
 
@@ -8409,7 +9356,9 @@ async function loadSettings() {
             }
         };
 
-$(“saveBranding”).onclick = async () => {
+
+   $("saveBranding").onclick =
+    async () => {
 
         const button =
             $("saveBranding");
@@ -8850,9 +9799,10 @@ $(“saveBranding”).onclick = async () => {
 
     };
     }
-
-/* ========================================================= LOGO
-PREVIEW ========================================================= */
+    
+/* =========================================================
+   LOGO PREVIEW
+========================================================= */
 
 function renderLogoPreview() {
 
@@ -8938,10 +9888,11 @@ function renderLogoPreview() {
 
         `;
     }
-
 }
 
-/* ========================================================= LOGOUT
+
+/* =========================================================
+   LOGOUT
 ========================================================= */
 
 async function logout() {
@@ -8962,11 +9913,12 @@ async function logout() {
         window.location.href =
             "/app/";
     }
-
 }
 
-/* ========================================================= ADMIN
-NAVIGATION FINAL ROBUST VERSION
+
+/* =========================================================
+   ADMIN NAVIGATION
+   FINAL ROBUST VERSION
 ========================================================= */
 
 (function initializeAdminNavigation() {
@@ -9344,21 +10296,27 @@ NAVIGATION FINAL ROBUST VERSION
         "[ADMIN] Navigation initialized."
     );
 
-})(); /* =========================================================
-LOGOUT BUTTON =========================================================
-*/
+})();
+/* =========================================================
+   LOGOUT BUTTON
+========================================================= */
 
-if ($(“logout”)) {
+if ($("logout")) {
 
     $("logout").onclick =
         logout;
-
 }
 
-/* ========================================================= AUTH STATE
+
+/* =========================================================
+   AUTH STATE
 ========================================================= */
 
-sb.auth.onAuthStateChange( ( event, currentSession ) => {
+sb.auth.onAuthStateChange(
+    (
+        event,
+        currentSession
+    ) => {
 
         session =
             currentSession;
@@ -9375,10 +10333,13 @@ sb.auth.onAuthStateChange( ( event, currentSession ) => {
         }
 
     }
-
 );
 
-/* ========================================================= START ADMIN
-PANEL ========================================================= */
 
-loadSection( “dashboard” );
+/* =========================================================
+   START ADMIN PANEL
+========================================================= */
+
+loadSection(
+    "dashboard"
+);
