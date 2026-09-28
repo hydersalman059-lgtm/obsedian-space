@@ -570,34 +570,45 @@ Deno.serve(async (req) => {
 
 
 
-        /* -----------------------------------------------------
-   WEBSITES MANAGEMENT
+   /* -----------------------------------------------------
+   WEBSITE ACTION PARAMETERS
 ----------------------------------------------------- */
 
-if (section === "websites") {
+const action =
+    String(
+        body?.action || ""
+    ).trim();
 
-    const action =
-        String(
-            body?.action || ""
-        ).trim();
-
-    const websiteId =
-        String(
-            body?.website_id || ""
-        ).trim();
+const websiteId =
+    String(
+        body?.website_id || ""
+    ).trim();
 
 
-    if (!websiteId) {
+/*
+ * Only website-management actions require
+ * a website_id.
+ */
 
-        return json(
-            {
-                error:
-                    "website_id is required."
-            },
-            400
-        );
+const websiteActions = [
+    "update_website",
+    "delete_website",
+    "archive_website",
+    "restore_website"
+];
 
-    }
+
+if (
+    websiteActions.includes(action) &&
+    !websiteId
+) {
+    return json(
+        {
+            error:
+                "website_id is required."
+        },
+        400
+    );
 }
 
     /* =================================================
@@ -2261,46 +2272,52 @@ if (
     }
 
 
-   /* -----------------------------------------------------
-   WEBSITE ACTION PARAMETERS
------------------------------------------------------ */
+    /* =====================================================
+       WEBSITES
+    ===================================================== */
 
-const action =
-    String(
-        body?.action || ""
-    ).trim();
+    if (
+        section ===
+        "websites"
+    ) {
 
-const websiteId =
-    String(
-        body?.website_id || ""
-    ).trim();
-
-
-/*
- * Only website-management actions require
- * a website_id.
- */
-
-const websiteActions = [
-    "update_website",
-    "delete_website",
-    "archive_website",
-    "restore_website"
-];
+        const {
+            data,
+            error
+        } = await sb
+            .from("websites")
+            .select("*")
+            .order(
+                "created_at",
+                {
+                    ascending: false
+                }
+            );
 
 
-if (
-    websiteActions.includes(action) &&
-    !websiteId
-) {
-    return json(
-        {
-            error:
-                "website_id is required."
-        },
-        400
-    );
-}
+        if (error) {
+
+            return json(
+                {
+                    error:
+                        "Unable to load websites.",
+                    details:
+                        error.message
+                },
+                500
+            );
+        }
+
+
+        return json(
+            {
+                success: true,
+                section,
+                websites:
+                    data || []
+            }
+        );
+    }
 
 
     /* =====================================================
