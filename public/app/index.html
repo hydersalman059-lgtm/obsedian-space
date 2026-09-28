@@ -1,11 +1,12 @@
 <!doctype html>
-
+--------------------------------------------------------------------------------------------------------------------------------------
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Obsedian.Space Dashboard</title>
 <link rel="stylesheet" href="../app.css">
+<link rel="stylesheet" href="../auth-ui.css">
 </head>
 <body>
 <header>
@@ -15,7 +16,7 @@ src="../assets/obsedian-logo.svg"
 alt="Obsedian.Space"
 class="app-brand-logo"
 >
-
+<span class="app-brand-name">Obsedian.Space</span>
 </a>
 <button id="logout">Logout</button>
 </header>
@@ -65,7 +66,7 @@ class="app-brand-logo"
 <button id="audit">Run AI audit</button>
 <button id="strategy">Generate SEO strategy</button>
 <button id="report">Generate weekly report</button>
-<div id="out"></div>
+<pre id="out"></pre>
 </section>
 </div>
 <br>
@@ -119,8 +120,8 @@ class="app-brand-logo"
 <br>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../app-config.js"></script>
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script src="../app.js"></script>
+<script src="../auth-ui.js"></script>
 </body>
 </html>
 

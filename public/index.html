@@ -9,17 +9,59 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/mobile-nav.css">
 </head>
 <body>
 <div class="top-glow glow-purple"></div><div class="top-glow glow-orange"></div>
 <header class="nav-wrap">
-  <a class="logo" href="./" aria-label="Obsedian.Space home"><img src="assets/obsedian-logo.svg" alt="Obsedian.Space"
-class="app-brand-logo"
->
-</a>
-  <nav><a href="#agents">AI Agents</a><a href="#workflow">Workflow</a><a href="#pricing">Pricing</a><a href="#about">About</a></nav>
-  <div class="nav-actions"><a class="btn btn-light" href="app/">Login</a><a class="btn btn-gradient" href="app/">Start Free — 45 Days <span>→</span></a></div>
+  <a class="logo" href="./" aria-label="Obsedian.Space home"><img src="assets/obsedian-logo.svg" alt="Obsedian.Space" class="app-brand-logo"></a>
+
+  <nav class="desktop-nav" aria-label="Primary navigation">
+    <a href="#agents">AI Agents</a>
+    <a href="#workflow">Workflow</a>
+    <a href="#pricing">Pricing</a>
+    <a href="#about">About</a>
+  </nav>
+
+  <div class="nav-actions">
+    <a class="btn btn-light" href="app/">Login</a>
+    <a class="btn btn-gradient" href="app/">Start Free — 45 Days <span>→</span></a>
+  </div>
+
+  <button
+    class="mobile-nav-toggle"
+    id="mobileNavToggle"
+    type="button"
+    aria-label="Open navigation menu"
+    aria-expanded="false"
+    aria-controls="mobileNavMenu"
+  >
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
 </header>
+
+<div class="mobile-nav-backdrop" id="mobileNavBackdrop" aria-hidden="true"></div>
+
+<aside class="mobile-nav-menu" id="mobileNavMenu" aria-hidden="true" aria-label="Mobile navigation">
+  <div class="mobile-nav-head">
+    <strong>OBSEDIAN.SPACE</strong>
+    <button id="mobileNavClose" type="button" aria-label="Close navigation menu">×</button>
+  </div>
+
+  <nav aria-label="Mobile primary navigation">
+    <a href="#agents">AI Agents</a>
+    <a href="#workflow">Workflow</a>
+    <a href="#pricing">Pricing</a>
+    <a href="#about">About</a>
+  </nav>
+
+  <div class="mobile-nav-actions">
+    <a class="btn btn-light" href="app/">Login</a>
+    <a class="btn btn-gradient" href="app/">Start Free — 45 Days <span>→</span></a>
+  </div>
+</aside>
 
 <main>
 <section class="hero">
@@ -31,28 +73,25 @@ class="app-brand-logo"
     <p class="micro"><b>Free:</b> 1 website URL for 45 days. No automatic ad spend.</p>
     <div class="trust-row"><span>✦ AI-powered agents</span><span>▥ Real website data</span><span>◈ You approve actions</span><span>♙ Built for teams</span></div>
   </div>
-
   <div class="ai-stage" aria-label="AI engines connected to Obsedian AI Orchestrator">
     <div class="stage-orbit orbit-one"></div><div class="stage-orbit orbit-two"></div>
     <svg class="connection-lines" viewBox="0 0 620 540" preserveAspectRatio="none" aria-hidden="true">
       <path d="M95 98 C150 125 210 155 305 220"/><path d="M525 98 C470 125 410 155 315 220"/>
       <path d="M85 390 C160 355 215 330 305 292"/><path d="M535 390 C460 355 405 330 315 292"/>
     </svg>
-    <div class="engine engine-openai"><span class="engine-icon">◉</span><b>OpenAI</b><small>Reasoning & Content</small></div>
-    <div class="engine engine-claude"><span class="engine-icon">✳</span><b>Claude</b><small>Analysis & Strategy</small></div>
-    <div class="engine engine-gemini"><span class="engine-icon">✦</span><b>Gemini</b><small>Research & Insights</small></div>
+    <div class="engine engine-openai"><span class="engine-icon">◉</span><b>OpenAI</b><small>Reasoning &amp; Content</small></div>
+    <div class="engine engine-claude"><span class="engine-icon">✳</span><b>Claude</b><small>Analysis &amp; Strategy</small></div>
+    <div class="engine engine-gemini"><span class="engine-icon">✦</span><b>Gemini</b><small>Research &amp; Insights</small></div>
     <div class="engine engine-perplexity"><span class="engine-icon">◇</span><b>Perplexity</b><small>Web Research</small></div>
     <div class="orchestrator"><div class="cube-glow"></div><span>✦</span><b>Obsedian.Space</b><small>AI ORCHESTRATOR</small></div>
     <div class="mini-card mini-seo"><i>↗</i><b>SEO Audit</b><small>Technical + On-page</small></div>
-    <div class="mini-card mini-content"><i>✎</i><b>Content</b><small>Briefs & Calendars</small></div>
+    <div class="mini-card mini-content"><i>✎</i><b>Content</b><small>Briefs &amp; Calendars</small></div>
     <div class="mini-card mini-research"><i>◎</i><b>Research</b><small>Competitor Insights</small></div>
     <div class="mini-card mini-ads"><i>⌁</i><b>Ads Strategy</b><small>Campaign Ideas</small></div>
     <div class="dashboard-card"><div class="dash-bar"><span></span><span></span><span></span><b>YOUR WEBSITE</b></div><div class="dash-title">Growing 24/7</div><div class="chart"><i style="height:32%"></i><i style="height:48%"></i><i style="height:42%"></i><i style="height:68%"></i><i style="height:58%"></i><i style="height:86%"></i></div><div class="dash-foot"><span>SEO health</span><strong>94%</strong><span>↗ +28%</span></div></div>
   </div>
 </section>
-
 <section class="proof-strip"><span>BUILT FOR MODERN DIGITAL GROWTH</span><b>↗ Better rankings</b><b>◉ More traffic</b><b>◎ Higher conversions</b><b>ϟ Less manual work</b></section>
-
 <section id="agents" class="section">
   <div class="section-heading"><div><div class="eyebrow">AGENT SYSTEM</div><h2>Specialists, not one generic chatbot.</h2><p>A coordinated team of agents works from the same website context and business goals.</p></div><div class="scribble">Different skills.<br><b>One goal → growth.</b></div></div>
   <div class="cards agent-grid">
@@ -64,13 +103,11 @@ class="app-brand-logo"
     <article><span class="card-icon indigo">✦</span><h3>Executive Agent</h3><p>Turns agent outputs into priorities, risks and next actions.</p></article>
   </div>
 </section>
-
 <section id="workflow" class="workflow section">
   <div class="eyebrow">CONTROLLED AUTOMATION</div><h2>Automate the work. Keep the decisions.</h2><p class="section-lead">From your website URL to measurable growth, with human control at every step.</p>
   <div class="flow"><div><b>01</b><span>URL</span><small>Connect</small></div><i>→</i><div><b>02</b><span>CRAWL</span><small>Observe</small></div><i>→</i><div><b>03</b><span>AI RESEARCH</span><small>Understand</small></div><i>→</i><div><b>04</b><span>STRATEGY</span><small>Plan</small></div><i>→</i><div><b>05</b><span>APPROVAL</span><small>Control</small></div><i>→</i><div><b>06</b><span>EXECUTE</span><small>Act</small></div><i>→</i><div><b>07</b><span>MEASURE</span><small>Learn</small></div></div>
   <div class="approval-note">◈ Campaign launches, budget changes and other high-impact advertising actions require explicit approval.</div>
 </section>
-
 <section id="pricing" class="section pricing-section">
   <div class="eyebrow">PLANS</div><h2>Built for one site or a portfolio.</h2><p class="section-lead">Start small. Scale when your workflow needs more sites and automation.</p>
   <div class="prices">
@@ -79,8 +116,9 @@ class="app-brand-logo"
     <article><div class="plan-label">SCALE</div><h3>Scale</h3><strong>₹200<small>/mo</small></strong><p>₹1,990/year · 100 URLs</p><ul><li>Everything in Growth</li><li>100 website URLs</li><li>Advanced analytics</li><li>Priority support</li></ul><a class="btn btn-outline" href="app/?plan=scale">Choose Scale</a></article>
   </div>
 </section>
-
 <section id="about" class="final-cta"><div><div class="eyebrow">OBSEDIAN.SPACE</div><h2>Your website. Your data. Your AI growth system.</h2><p>Bring crawling, intelligence, recommendations and controlled execution into one workspace.</p></div><a class="btn btn-gradient btn-large" href="app/">Start Free — 45 Days →</a></section>
 </main>
 <footer><span>© Obsedian.Space</span><span><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></span></footer>
-</body></html>
+<script src="assets/mobile-nav.js"></script>
+</body>
+</html>
