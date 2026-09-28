@@ -5786,139 +5786,209 @@ async function loadAI() {
 ========================================================= */
 
 async function loadApprovals() {
+    loading("Loading approvals...");
 
-    loading(
-        "Loading approvals..."
-    );
+    try {
+        const data = await api("approvals");
 
+        const approvals = Array.isArray(data?.approvals)
+            ? data.approvals
+            : [];
 
-    const data =
-        await api(
-            "approvals"
-        );
+        $("content").innerHTML = `
+            <div class="card">
 
+                <div class="admin-header">
 
-    const approvals =
-        data.approvals || [];
+                    <div>
+                        <h2>Approvals</h2>
 
+                        <p>
+                            ${approvals.length}
+                            approval record(s).
+                        </p>
+                    </div>
 
-    $("content").innerHTML = `
-
-        <div class="card">
-
-            <div class="admin-header">
-
-                <div>
-
-                    <h2>
-                        Approvals
-                    </h2>
-
-                    <p>
-                        ${approvals.length}
-                        approval record(s).
-                    </p>
+                    <button
+                        id="approvalsRefresh"
+                        type="button"
+                    >
+                        Refresh
+                    </button>
 
                 </div>
 
-                <button
-                    id="approvalsRefresh"
-                >
-                    Refresh
-                </button>
 
-            </div>
+                ${
+                    approvals.length
+                        ? `
 
-
-            ${
-                approvals.length
-                    ? `
-
-                    <div class="admin-table-wrapper">
+                    <div style="
+                        overflow-x:auto;
+                    ">
 
                         <table class="admin-table">
 
                             <thead>
 
                                 <tr>
-
-                                    <th>
-                                        Title
-                                    </th>
-
-                                    <th>
-                                        User
-                                    </th>
-
-                                    <th>
-                                        Status
-                                    </th>
-
-                                    <th>
-                                        Risk
-                                    </th>
-
-                                    <th>
-                                        Created
-                                    </th>
-
+                                    <th>Title</th>
+                                    <th>User</th>
+                                    <th>Action</th>
+                                    <th>Status</th>
+                                    <th>Risk</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
                                 </tr>
 
                             </thead>
 
                             <tbody>
 
-                                ${approvals
-                                    .map(
-                                        item => `
+                                ${approvals.map((approval, index) => {
 
+                                    const status =
+                                        String(
+                                            approval.status || ""
+                                        ).toLowerCase();
+
+                                    const risk =
+                                        String(
+                                            approval.risk_level || "medium"
+                                        ).toLowerCase();
+
+                                    return `
                                         <tr>
 
                                             <td>
-                                                ${escapeHtml(
-                                                    item.title ||
-                                                    "—"
-                                                )}
-                                            </td>
-
-                                            <td>
-                                                ${escapeHtml(
-                                                    item.user_id ||
-                                                    "—"
-                                                )}
-                                            </td>
-
-                                            <td>
-
-                                                <span class="badge">
-
+                                                <strong>
                                                     ${escapeHtml(
-                                                        item.status ||
-                                                        "—"
+                                                        approval.title ||
+                                                        "Untitled approval"
                                                     )}
+                                                </strong>
 
+                                                ${
+                                                    approval.description
+                                                        ? `
+                                                        <div style="
+                                                            margin-top:5px;
+                                                            color:#6b7280;
+                                                            font-size:13px;
+                                                        ">
+                                                            ${escapeHtml(
+                                                                approval.description
+                                                            )}
+                                                        </div>
+                                                        `
+                                                        : ""
+                                                }
+                                            </td>
+
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    approval.user_email ||
+                                                    approval.user_name ||
+                                                    approval.user_id ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+
+                                            <td>
+                                                ${escapeHtml(
+                                                    approval.action_type ||
+                                                    "—"
+                                                )}
+                                            </td>
+
+
+                                            <td>
+
+                                                <span
+                                                    class="status-badge status-${escapeHtml(
+                                                        status
+                                                    )}"
+                                                >
+                                                    ${escapeHtml(
+                                                        status || "unknown"
+                                                    )}
                                                 </span>
 
                                             </td>
 
+
                                             <td>
-                                                ${escapeHtml(
-                                                    item.risk_level ||
-                                                    "—"
-                                                )}
+
+                                                <span
+                                                    class="status-badge risk-${escapeHtml(
+                                                        risk
+                                                    )}"
+                                                >
+                                                    ${escapeHtml(
+                                                        risk
+                                                    )}
+                                                </span>
+
                                             </td>
+
 
                                             <td>
                                                 ${formatDate(
-                                                    item.created_at
+                                                    approval.created_at
                                                 )}
                                             </td>
 
-                                        </tr>
 
-                                    `
-                                    )
-                                    .join("")}
+                                            <td>
+
+                                                <div style="
+                                                    display:flex;
+                                                    gap:7px;
+                                                    flex-wrap:wrap;
+                                                ">
+
+                                                    <button
+                                                        type="button"
+                                                        class="approval-view-btn"
+                                                        data-index="${index}"
+                                                    >
+                                                        View
+                                                    </button>
+
+                                                    ${
+                                                        status ===
+                                                        "pending"
+                                                            ? `
+
+                                                        <button
+                                                            type="button"
+                                                            class="approval-approve-btn"
+                                                            data-index="${index}"
+                                                        >
+                                                            Approve
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            class="approval-reject-btn"
+                                                            data-index="${index}"
+                                                        >
+                                                            Reject
+                                                        </button>
+
+                                                    `
+                                                            : ""
+                                                    }
+
+                                                </div>
+
+                                            </td>
+
+                                        </tr>
+                                    `;
+                                }).join("")}
 
                             </tbody>
 
@@ -5927,22 +5997,740 @@ async function loadApprovals() {
                     </div>
 
                 `
-                    : `
-                    <div class="empty">
-                        No approval records found.
+                        : `
+                    <div class="empty-state">
+
+                        <div style="
+                            font-size:42px;
+                            margin-bottom:10px;
+                        ">
+                            ✓
+                        </div>
+
+                        <h3>
+                            No approval records found.
+                        </h3>
+
+                        <p>
+                            There are currently no approval
+                            requests to review.
+                        </p>
+
                     </div>
                 `
-            }
+                }
+
+            </div>
+        `;
+
+
+        /* =====================================================
+           REFRESH
+        ===================================================== */
+
+        const refreshButton =
+            $("approvalsRefresh");
+
+        if (refreshButton) {
+
+            refreshButton.onclick =
+                async () => {
+
+                    refreshButton.disabled =
+                        true;
+
+                    refreshButton.textContent =
+                        "Refreshing...";
+
+                    try {
+
+                        await loadApprovals();
+
+                    } finally {
+
+                        const current =
+                            $("approvalsRefresh");
+
+                        if (current) {
+
+                            current.disabled =
+                                false;
+
+                            current.textContent =
+                                "Refresh";
+                        }
+                    }
+                };
+        }
+
+
+        /* =====================================================
+           VIEW
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".approval-view-btn"
+            )
+            .forEach(button => {
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
+
+                        const approval =
+                            approvals[index];
+
+                        if (!approval) {
+                            return;
+                        }
+
+                        showApprovalDetails(
+                            approval
+                        );
+                    }
+                );
+
+            });
+
+
+        /* =====================================================
+           APPROVE
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".approval-approve-btn"
+            )
+            .forEach(button => {
+
+                button.addEventListener(
+                    "click",
+                    async () => {
+
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
+
+                        const approval =
+                            approvals[index];
+
+                        if (!approval) {
+                            return;
+                        }
+
+
+                        if (
+                            String(
+                                approval.status
+                            ).toLowerCase() !==
+                            "pending"
+                        ) {
+
+                            showMessage(
+                                "Only pending approvals can be approved.",
+                                "error"
+                            );
+
+                            return;
+                        }
+
+
+                        const confirmed =
+                            confirm(
+                                `Approve "${approval.title || "this approval"}"?`
+                            );
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+
+                        try {
+
+                            button.disabled =
+                                true;
+
+                            button.textContent =
+                                "Approving...";
+
+
+                            await adminAction(
+                                "approve_approval",
+                                {
+                                    approval_id:
+                                        approval.id
+                                }
+                            );
+
+
+                            showMessage(
+                                "Approval approved successfully."
+                            );
+
+
+                            await loadApprovals();
+
+                        } catch (error) {
+
+                            console.error(
+                                "[ADMIN] Approve approval error:",
+                                error
+                            );
+
+
+                            showMessage(
+                                error?.message ||
+                                "Unable to approve approval.",
+                                "error"
+                            );
+
+
+                            button.disabled =
+                                false;
+
+                            button.textContent =
+                                "Approve";
+                        }
+
+                    }
+                );
+
+            });
+
+
+        /* =====================================================
+           REJECT
+        ===================================================== */
+
+        document
+            .querySelectorAll(
+                ".approval-reject-btn"
+            )
+            .forEach(button => {
+
+                button.addEventListener(
+                    "click",
+                    async () => {
+
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
+
+                        const approval =
+                            approvals[index];
+
+                        if (!approval) {
+                            return;
+                        }
+
+
+                        if (
+                            String(
+                                approval.status
+                            ).toLowerCase() !==
+                            "pending"
+                        ) {
+
+                            showMessage(
+                                "Only pending approvals can be rejected.",
+                                "error"
+                            );
+
+                            return;
+                        }
+
+
+                        const reason =
+                            prompt(
+                                "Enter rejection reason (optional):"
+                            );
+
+
+                        if (
+                            reason === null
+                        ) {
+                            return;
+                        }
+
+
+                        const confirmed =
+                            confirm(
+                                `Reject "${approval.title || "this approval"}"?`
+                            );
+
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+
+                        try {
+
+                            button.disabled =
+                                true;
+
+                            button.textContent =
+                                "Rejecting...";
+
+
+                            await adminAction(
+                                "reject_approval",
+                                {
+                                    approval_id:
+                                        approval.id,
+
+                                    reason:
+                                        reason.trim()
+                                }
+                            );
+
+
+                            showMessage(
+                                "Approval rejected successfully."
+                            );
+
+
+                            await loadApprovals();
+
+                        } catch (error) {
+
+                            console.error(
+                                "[ADMIN] Reject approval error:",
+                                error
+                            );
+
+
+                            showMessage(
+                                error?.message ||
+                                "Unable to reject approval.",
+                                "error"
+                            );
+
+
+                            button.disabled =
+                                false;
+
+                            button.textContent =
+                                "Reject";
+                        }
+
+                    }
+                );
+
+            });
+
+    } catch (error) {
+
+        console.error(
+            "[ADMIN] Unable to load approvals:",
+            error
+        );
+
+
+        $("content").innerHTML = `
+            <div class="card">
+
+                <div class="admin-header">
+
+                    <div>
+                        <h2>Approvals</h2>
+
+                        <p>
+                            Unable to load approval records.
+                        </p>
+                    </div>
+
+                    <button
+                        id="approvalsRetry"
+                        type="button"
+                    >
+                        Retry
+                    </button>
+
+                </div>
+
+
+                <div style="
+                    padding:20px;
+                    color:#b91c1c;
+                    background:#fef2f2;
+                    border-radius:10px;
+                ">
+                    ${escapeHtml(
+                        error?.message ||
+                        "Unknown error."
+                    )}
+                </div>
+
+            </div>
+        `;
+
+
+        const retry =
+            $("approvalsRetry");
+
+        if (retry) {
+
+            retry.onclick =
+                () => loadApprovals();
+        }
+    }
+}
+
+
+/* =========================================================
+   APPROVAL DETAILS
+========================================================= */
+
+function showApprovalDetails(
+    approval
+) {
+
+    const modal =
+        document.createElement(
+            "div"
+        );
+
+
+    modal.style.cssText = `
+        position:fixed;
+        inset:0;
+        z-index:10000;
+        background:rgba(0,0,0,.55);
+        padding:20px;
+        overflow:auto;
+    `;
+
+
+    let proposedChange = "—";
+
+
+    try {
+
+        if (
+            approval.proposed_change !==
+            null &&
+            approval.proposed_change !==
+            undefined
+        ) {
+
+            proposedChange =
+                typeof approval.proposed_change ===
+                "string"
+
+                    ? approval.proposed_change
+
+                    : JSON.stringify(
+                        approval.proposed_change,
+                        null,
+                        2
+                    );
+        }
+
+    } catch (error) {
+
+        proposedChange =
+            String(
+                approval.proposed_change ||
+                "—"
+            );
+    }
+
+
+    modal.innerHTML = `
+
+        <div style="
+            max-width:850px;
+            margin:50px auto;
+            background:#fff;
+            border-radius:16px;
+            padding:25px;
+            box-shadow:0 20px 70px rgba(0,0,0,.3);
+        ">
+
+
+            <div style="
+                display:flex;
+                justify-content:space-between;
+                align-items:center;
+                gap:20px;
+                margin-bottom:20px;
+            ">
+
+                <div>
+
+                    <h2 style="
+                        margin:0 0 5px;
+                    ">
+                        Approval Details
+                    </h2>
+
+                    <div style="
+                        color:#6b7280;
+                        font-size:13px;
+                    ">
+                        ${escapeHtml(
+                            approval.id ||
+                            ""
+                        )}
+                    </div>
+
+                </div>
+
+
+                <button
+                    id="closeApprovalDetails"
+                    type="button"
+                    style="
+                        border:0;
+                        background:none;
+                        font-size:28px;
+                        cursor:pointer;
+                    "
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <div style="
+                display:grid;
+                grid-template-columns:
+                    repeat(
+                        auto-fit,
+                        minmax(220px,1fr)
+                    );
+                gap:15px;
+                margin-bottom:20px;
+            ">
+
+                <div>
+                    <strong>Title</strong>
+
+                    <div>
+                        ${escapeHtml(
+                            approval.title ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Action Type</strong>
+
+                    <div>
+                        ${escapeHtml(
+                            approval.action_type ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Status</strong>
+
+                    <div>
+                        ${escapeHtml(
+                            approval.status ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Risk Level</strong>
+
+                    <div>
+                        ${escapeHtml(
+                            approval.risk_level ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>User ID</strong>
+
+                    <div style="
+                        word-break:break-all;
+                    ">
+                        ${escapeHtml(
+                            approval.user_id ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Website ID</strong>
+
+                    <div style="
+                        word-break:break-all;
+                    ">
+                        ${escapeHtml(
+                            approval.website_id ||
+                            "—"
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Created</strong>
+
+                    <div>
+                        ${formatDate(
+                            approval.created_at
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Approved</strong>
+
+                    <div>
+                        ${formatDate(
+                            approval.approved_at
+                        )}
+                    </div>
+                </div>
+
+
+                <div>
+                    <strong>Executed</strong>
+
+                    <div>
+                        ${formatDate(
+                            approval.executed_at
+                        )}
+                    </div>
+                </div>
+
+            </div>
+
+
+            <div style="
+                margin-bottom:20px;
+            ">
+
+                <h3>
+                    Description
+                </h3>
+
+                <div style="
+                    white-space:pre-wrap;
+                    color:#374151;
+                ">
+                    ${escapeHtml(
+                        approval.description ||
+                        "No description provided."
+                    )}
+                </div>
+
+            </div>
+
+
+            <div>
+
+                <h3>
+                    Proposed Change
+                </h3>
+
+                <pre style="
+                    background:#111827;
+                    color:#e5e7eb;
+                    padding:16px;
+                    border-radius:10px;
+                    overflow:auto;
+                    max-height:400px;
+                    white-space:pre-wrap;
+                    word-break:break-word;
+                ">${escapeHtml(
+                    proposedChange
+                )}</pre>
+
+            </div>
+
+
+            <div style="
+                display:flex;
+                justify-content:flex-end;
+                margin-top:20px;
+            ">
+
+                <button
+                    id="closeApprovalDetailsBottom"
+                    type="button"
+                >
+                    Close
+                </button>
+
+            </div>
 
         </div>
     `;
 
 
-    $("approvalsRefresh").onclick =
-        () =>
-            loadApprovals();
-}
+    document.body.appendChild(
+        modal
+    );
 
+
+    const close =
+        () => modal.remove();
+
+
+    const closeTop =
+        document.getElementById(
+            "closeApprovalDetails"
+        );
+
+
+    const closeBottom =
+        document.getElementById(
+            "closeApprovalDetailsBottom"
+        );
+
+
+    if (closeTop) {
+        closeTop.onclick = close;
+    }
+
+
+    if (closeBottom) {
+        closeBottom.onclick = close;
+    }
+
+
+    modal.addEventListener(
+        "click",
+        event => {
+
+            if (
+                event.target ===
+                modal
+            ) {
+                close();
+            }
+
+        }
+    );
+}
 
 /* =========================================================
    SUPPORT TICKETS
