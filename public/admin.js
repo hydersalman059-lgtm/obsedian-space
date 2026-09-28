@@ -382,83 +382,100 @@ async function api(
    GENERIC ADMIN ACTION
 ========================================================= */
 
-async function adminAction(action, payload = {}, section = null) {
-    const current = await requireSession();
+async function adminAction(
+    action,
+    payload = {}
+) {
+    const current =
+        await requireSession();
 
     if (!current) {
-        return null;
-    }
-
-    /*
-     * Automatically determine section when not supplied.
-     */
-    if (!section) {
-        const actionSections = {
-            update_user: "users",
-            extend_subscription: "users",
-            pause_subscription: "users",
-            resume_subscription: "users",
-
-            update_website: "websites",
-            archive_website: "websites",
-            restore_website: "websites",
-
-            update_branding: "settings"
-        };
-
-        section = actionSections[action] || null;
-    }
-
-    if (!section) {
         throw new Error(
-            `No admin section mapped for action: ${action}`
+            "Admin session is not available."
         );
     }
 
-    const params = new URLSearchParams();
-    params.set("section", section);
 
     const url =
         `${window.OBSEDIAN_CONFIG.SUPABASE_URL}` +
-        `/functions/v1/admin?` +
-        params.toString();
+        `/functions/v1/admin`;
 
-    console.log("[ADMIN] POST:", {
-        section,
+
+    console.log(
+        "Admin action:",
         action,
         payload
-    });
+    );
 
-    const response = await fetch(url, {
-        method: "POST",
 
-        headers: {
-            Authorization:
-                `Bearer ${current.access_token}`,
+    /*
+     * IMPORTANT:
+     *
+     * Do NOT require an admin-section mapping here.
+     *
+     * The Edge Function receives the action directly
+     * in the POST body and handles the action.
+     *
+     * This allows actions such as:
+     *
+     * update_website
+     * delete_website
+     * approve_approval
+     * reject_approval
+     * update_user
+     * pause_subscription
+     * resume_subscription
+     * etc.
+     *
+     * without maintaining a second frontend mapping table.
+     */
 
-            apikey:
-                window.OBSEDIAN_CONFIG
-                    .SUPABASE_PUBLISHABLE_KEY,
 
-            "Content-Type":
-                "application/json"
-        },
+    const response =
+        await fetch(
+            url,
+            {
+                method:
+                    "POST",
 
-        body: JSON.stringify({
-            action,
-            ...payload
-        })
-    });
+                headers: {
+                    Authorization:
+                        `Bearer ${current.access_token}`,
 
-    const raw = await response.text();
+                    apikey:
+                        window
+                            .OBSEDIAN_CONFIG
+                            .SUPABASE_PUBLISHABLE_KEY,
+
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        action,
+                        ...payload
+                    })
+            }
+        );
+
+
+    const raw =
+        await response.text();
+
 
     let data = {};
 
+
     try {
-        data = raw
-            ? JSON.parse(raw)
-            : {};
+
+        data =
+            raw
+                ? JSON.parse(raw)
+                : {};
+
     } catch {
+
         data = {
             error:
                 raw ||
@@ -466,23 +483,31 @@ async function adminAction(action, payload = {}, section = null) {
         };
     }
 
-    console.log("[ADMIN] Response:", {
-        status: response.status,
+
+    console.log(
+        "Admin action status:",
+        response.status
+    );
+
+
+    console.log(
+        "Admin action response:",
         data
-    });
+    );
+
 
     if (!response.ok) {
+
         throw new Error(
             data?.error ||
             data?.message ||
-            data?.details ||
             `Action failed (${response.status})`
         );
     }
 
+
     return data;
 }
-
 
 /* =========================================================
    NAVIGATION
