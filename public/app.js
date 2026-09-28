@@ -1471,8 +1471,1715 @@ function aiShowLoading(message = "AI agent running…") {
    AI AGENTS
 ========================= */
 
+/*
+ * Escape HTML before inserting AI/server data
+ * into the visual result area.
+ */
+function aiEscape(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+/*
+ * Safely convert any value to readable text.
+ */
+function aiValue(value, fallback = "—") {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+        return fallback;
+    }
+
+    if (
+        typeof value === "object"
+    ) {
+        try {
+            return JSON.stringify(
+                value,
+                null,
+                2
+            );
+        } catch {
+            return String(value);
+        }
+    }
+
+    return String(value);
+}
+
+
+/*
+ * Get the current website URL.
+ */
+function getCurrentWebsiteUrl() {
+
+    return (
+        currentSites?.[0]?.url ||
+        currentSites?.[0]?.normalized_url ||
+        ""
+    );
+}
+
+
+/*
+ * Common AI result header.
+ */
+function aiResultHeader(
+    title,
+    subtitle,
+    icon,
+    gradient
+) {
+
+    return `
+        <div
+            class="ai-result-header"
+            style="
+                background:${gradient};
+                color:#fff;
+                padding:24px;
+                border-radius:18px;
+                margin-bottom:20px;
+                box-shadow:0 12px 30px rgba(0,0,0,.12);
+            "
+        >
+
+            <div
+                style="
+                    display:flex;
+                    align-items:center;
+                    gap:16px;
+                "
+            >
+
+                <div
+                    style="
+                        width:58px;
+                        height:58px;
+                        border-radius:16px;
+                        background:rgba(255,255,255,.18);
+                        display:flex;
+                        align-items:center;
+                        justify-content:center;
+                        font-size:30px;
+                        flex-shrink:0;
+                    "
+                >
+                    ${icon}
+                </div>
+
+                <div>
+
+                    <div
+                        style="
+                            font-size:24px;
+                            font-weight:800;
+                            line-height:1.2;
+                        "
+                    >
+                        ${aiEscape(title)}
+                    </div>
+
+                    <div
+                        style="
+                            margin-top:6px;
+                            opacity:.92;
+                            font-size:14px;
+                        "
+                    >
+                        ${aiEscape(subtitle)}
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    `;
+}
+
+
+/*
+ * SEO strategy visual.
+ *
+ * IMPORTANT:
+ * The interface should not claim that a real submission
+ * happened unless the backend actually performs those
+ * submissions. Therefore the UI describes the 25+ engine
+ * network as an AI visibility / submission workflow.
+ */
+function renderSEOStrategy(
+    data,
+    websiteUrl
+) {
+
+    const engines = [
+        "ChatGPT",
+        "Google AI",
+        "Gemini",
+        "Claude",
+        "Microsoft Copilot",
+        "Perplexity",
+        "Grok",
+        "Meta AI",
+        "DeepSeek",
+        "Mistral",
+        "You.com",
+        "Phind",
+        "Poe",
+        "Brave AI",
+        "Kagi",
+        "Andi",
+        "Kompas AI",
+        "DuckDuckGo AI",
+        "Bing AI",
+        "Google Discover",
+        "AI Overviews",
+        "SearchGPT",
+        "Character AI",
+        "Qwen",
+        "Le Chat"
+    ];
+
+    const engineColors = [
+        "#7c3aed",
+        "#2563eb",
+        "#06b6d4",
+        "#0f766e",
+        "#16a34a",
+        "#65a30d",
+        "#eab308",
+        "#f97316",
+        "#ef4444",
+        "#ec4899"
+    ];
+
+    const strategy =
+        data?.strategy ||
+        data?.result ||
+        data?.output ||
+        data?.data ||
+        {};
+
+    let keywordThemes = [];
+    let opportunities = [];
+    let contentBriefs = [];
+    let internalLinks = [];
+
+    if (
+        typeof strategy === "object"
+    ) {
+
+        keywordThemes =
+            strategy.keyword_themes ||
+            strategy.keywords ||
+            [];
+
+        opportunities =
+            strategy.page_opportunities ||
+            strategy.opportunities ||
+            [];
+
+        contentBriefs =
+            strategy.content_briefs ||
+            strategy.briefs ||
+            [];
+
+        internalLinks =
+            strategy.internal_linking ||
+            strategy.internal_links ||
+            [];
+    }
+
+    /*
+     * Normalize arrays so the UI remains stable
+     * even when the AI response uses another shape.
+     */
+    const normalizeArray = value => {
+
+        if (
+            Array.isArray(value)
+        ) {
+            return value;
+        }
+
+        if (
+            typeof value === "string" &&
+            value.trim()
+        ) {
+            return [
+                value
+            ];
+        }
+
+        return [];
+    };
+
+    keywordThemes =
+        normalizeArray(
+            keywordThemes
+        );
+
+    opportunities =
+        normalizeArray(
+            opportunities
+        );
+
+    contentBriefs =
+        normalizeArray(
+            contentBriefs
+        );
+
+    internalLinks =
+        normalizeArray(
+            internalLinks
+        );
+
+
+    return `
+
+        ${aiResultHeader(
+            "AI SEO Strategy",
+            "30-day search visibility and AI discovery plan",
+            "🚀",
+            "linear-gradient(135deg,#7c3aed,#2563eb,#06b6d4)"
+        )}
+
+        <!-- WEBSITE -->
+        <div
+            style="
+                padding:20px;
+                border-radius:16px;
+                background:
+                    linear-gradient(
+                        135deg,
+                        #fff7ed,
+                        #fef3c7,
+                        #ecfeff
+                    );
+                border:1px solid #fde68a;
+                margin-bottom:20px;
+            "
+        >
+
+            <div
+                style="
+                    font-size:13px;
+                    font-weight:700;
+                    text-transform:uppercase;
+                    letter-spacing:.08em;
+                    color:#7c3aed;
+                "
+            >
+                Website / Blog
+            </div>
+
+            <div
+                style="
+                    margin-top:8px;
+                    font-size:18px;
+                    font-weight:800;
+                    color:#111827;
+                    word-break:break-all;
+                "
+            >
+                ${aiEscape(websiteUrl)}
+            </div>
+
+            <div
+                style="
+                    margin-top:8px;
+                    color:#475569;
+                    font-size:13px;
+                "
+            >
+                Your website is being prepared for visibility
+                across a network of 25+ AI and search discovery
+                surfaces.
+            </div>
+
+        </div>
+
+
+        <!-- AI ENGINE INFOGRAPHIC -->
+        <div
+            style="
+                padding:22px;
+                border-radius:18px;
+                background:#0f172a;
+                color:#fff;
+                margin-bottom:20px;
+                overflow:hidden;
+                position:relative;
+            "
+        >
+
+            <div
+                style="
+                    position:absolute;
+                    width:220px;
+                    height:220px;
+                    border-radius:50%;
+                    background:rgba(124,58,237,.25);
+                    right:-80px;
+                    top:-90px;
+                "
+            ></div>
+
+            <div
+                style="
+                    position:absolute;
+                    width:180px;
+                    height:180px;
+                    border-radius:50%;
+                    background:rgba(6,182,212,.18);
+                    left:-80px;
+                    bottom:-100px;
+                "
+            ></div>
+
+
+            <div
+                style="
+                    position:relative;
+                    z-index:2;
+                "
+            >
+
+                <div
+                    style="
+                        font-size:13px;
+                        text-transform:uppercase;
+                        letter-spacing:.1em;
+                        color:#a5b4fc;
+                        font-weight:800;
+                    "
+                >
+                    AI Discovery Network
+                </div>
+
+                <div
+                    style="
+                        display:flex;
+                        align-items:center;
+                        gap:18px;
+                        margin-top:12px;
+                        flex-wrap:wrap;
+                    "
+                >
+
+                    <div
+                        style="
+                            font-size:46px;
+                            font-weight:900;
+                            background:
+                                linear-gradient(
+                                    90deg,
+                                    #c084fc,
+                                    #38bdf8,
+                                    #34d399,
+                                    #facc15
+                                );
+                            -webkit-background-clip:text;
+                            background-clip:text;
+                            color:transparent;
+                        "
+                    >
+                        25+
+                    </div>
+
+                    <div
+                        style="
+                            font-size:18px;
+                            font-weight:700;
+                        "
+                    >
+                        AI Engines & Discovery Surfaces
+                    </div>
+
+                </div>
+
+                <div
+                    style="
+                        margin-top:18px;
+                        display:grid;
+                        grid-template-columns:
+                            repeat(
+                                auto-fit,
+                                minmax(130px,1fr)
+                            );
+                        gap:10px;
+                    "
+                >
+
+                    ${engines
+                        .map(
+                            (engine, index) => `
+                                <div
+                                    style="
+                                        padding:10px 12px;
+                                        border-radius:10px;
+                                        background:
+                                            linear-gradient(
+                                                135deg,
+                                                ${
+                                                    engineColors[
+                                                        index %
+                                                        engineColors.length
+                                                    ]
+                                                },
+                                                rgba(255,255,255,.12)
+                                            );
+                                        font-size:12px;
+                                        font-weight:700;
+                                        box-shadow:
+                                            0 5px 15px
+                                            rgba(0,0,0,.18);
+                                    "
+                                >
+                                    ${aiEscape(engine)}
+                                </div>
+                            `
+                        )
+                        .join("")}
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- COLORFUL PROCESS INFOGRAPHIC -->
+        <div
+            style="
+                display:grid;
+                grid-template-columns:
+                    repeat(
+                        auto-fit,
+                        minmax(180px,1fr)
+                    );
+                gap:14px;
+                margin-bottom:20px;
+            "
+        >
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:
+                        linear-gradient(
+                            135deg,
+                            #ede9fe,
+                            #ddd6fe
+                        );
+                "
+            >
+                <div style="font-size:28px;">
+                    🔎
+                </div>
+
+                <strong
+                    style="
+                        display:block;
+                        margin-top:8px;
+                        color:#5b21b6;
+                    "
+                >
+                    01 · Discover
+                </strong>
+
+                <small>
+                    Analyze your website and identify
+                    important search topics.
+                </small>
+            </div>
+
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:
+                        linear-gradient(
+                            135deg,
+                            #dbeafe,
+                            #bfdbfe
+                        );
+                "
+            >
+                <div style="font-size:28px;">
+                    🧠
+                </div>
+
+                <strong
+                    style="
+                        display:block;
+                        margin-top:8px;
+                        color:#1d4ed8;
+                    "
+                >
+                    02 · Understand
+                </strong>
+
+                <small>
+                    Build keyword, content and entity
+                    opportunities.
+                </small>
+            </div>
+
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:
+                        linear-gradient(
+                            135deg,
+                            #cffafe,
+                            #a5f3fc
+                        );
+                "
+            >
+                <div style="font-size:28px;">
+                    🤖
+                </div>
+
+                <strong
+                    style="
+                        display:block;
+                        margin-top:8px;
+                        color:#0e7490;
+                    "
+                >
+                    03 · AI Visibility
+                </strong>
+
+                <small>
+                    Prepare content for AI-powered
+                    discovery and answer engines.
+                </small>
+            </div>
+
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:
+                        linear-gradient(
+                            135deg,
+                            #dcfce7,
+                            #bbf7d0
+                        );
+                "
+            >
+                <div style="font-size:28px;">
+                    📈
+                </div>
+
+                <strong
+                    style="
+                        display:block;
+                        margin-top:8px;
+                        color:#15803d;
+                    "
+                >
+                    04 · Grow
+                </strong>
+
+                <small>
+                    Turn recommendations into a
+                    measurable 30-day action plan.
+                </small>
+            </div>
+
+        </div>
+
+
+        <!-- STRATEGY CARDS -->
+        <div
+            style="
+                display:grid;
+                grid-template-columns:
+                    repeat(
+                        auto-fit,
+                        minmax(240px,1fr)
+                    );
+                gap:16px;
+            "
+        >
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:#fff;
+                    border:1px solid #e5e7eb;
+                    box-shadow:0 6px 18px rgba(0,0,0,.05);
+                "
+            >
+
+                <div
+                    style="
+                        color:#7c3aed;
+                        font-size:13px;
+                        font-weight:800;
+                        text-transform:uppercase;
+                    "
+                >
+                    Keyword Themes
+                </div>
+
+                <div
+                    style="
+                        margin-top:12px;
+                        line-height:1.7;
+                    "
+                >
+
+                    ${
+                        keywordThemes.length
+                            ? keywordThemes
+                                .slice(0,8)
+                                .map(
+                                    item =>
+                                        `<div
+                                            style="
+                                                padding:8px 0;
+                                                border-bottom:
+                                                    1px solid #f1f5f9;
+                                            "
+                                        >
+                                            ${aiEscape(
+                                                typeof item === "object"
+                                                    ? (
+                                                        item.keyword ||
+                                                        item.theme ||
+                                                        item.title ||
+                                                        JSON.stringify(item)
+                                                    )
+                                                    : item
+                                            )}
+                                        </div>`
+                                )
+                                .join("")
+                            : `
+                                <div
+                                    style="
+                                        color:#64748b;
+                                        font-size:13px;
+                                    "
+                                >
+                                    AI-generated keyword themes
+                                    will appear here.
+                                </div>
+                            `
+                    }
+
+                </div>
+
+            </div>
+
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:#fff;
+                    border:1px solid #e5e7eb;
+                    box-shadow:0 6px 18px rgba(0,0,0,.05);
+                "
+            >
+
+                <div
+                    style="
+                        color:#2563eb;
+                        font-size:13px;
+                        font-weight:800;
+                        text-transform:uppercase;
+                    "
+                >
+                    Page Opportunities
+                </div>
+
+                <div
+                    style="
+                        margin-top:12px;
+                        line-height:1.7;
+                    "
+                >
+
+                    ${
+                        opportunities.length
+                            ? opportunities
+                                .slice(0,8)
+                                .map(
+                                    item =>
+                                        `<div
+                                            style="
+                                                padding:8px 0;
+                                                border-bottom:
+                                                    1px solid #f1f5f9;
+                                            "
+                                        >
+                                            ${aiEscape(
+                                                typeof item === "object"
+                                                    ? (
+                                                        item.title ||
+                                                        item.page ||
+                                                        item.url ||
+                                                        item.description ||
+                                                        JSON.stringify(item)
+                                                    )
+                                                    : item
+                                            )}
+                                        </div>`
+                                )
+                                .join("")
+                            : `
+                                <div
+                                    style="
+                                        color:#64748b;
+                                        font-size:13px;
+                                    "
+                                >
+                                    Recommended page opportunities
+                                    will appear here.
+                                </div>
+                            `
+                    }
+
+                </div>
+
+            </div>
+
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:#fff;
+                    border:1px solid #e5e7eb;
+                    box-shadow:0 6px 18px rgba(0,0,0,.05);
+                "
+            >
+
+                <div
+                    style="
+                        color:#059669;
+                        font-size:13px;
+                        font-weight:800;
+                        text-transform:uppercase;
+                    "
+                >
+                    Content Opportunities
+                </div>
+
+                <div
+                    style="
+                        margin-top:12px;
+                        line-height:1.7;
+                    "
+                >
+
+                    ${
+                        contentBriefs.length
+                            ? contentBriefs
+                                .slice(0,8)
+                                .map(
+                                    item =>
+                                        `<div
+                                            style="
+                                                padding:8px 0;
+                                                border-bottom:
+                                                    1px solid #f1f5f9;
+                                            "
+                                        >
+                                            ${aiEscape(
+                                                typeof item === "object"
+                                                    ? (
+                                                        item.title ||
+                                                        item.topic ||
+                                                        item.brief ||
+                                                        JSON.stringify(item)
+                                                    )
+                                                    : item
+                                            )}
+                                        </div>`
+                                )
+                                .join("")
+                            : `
+                                <div
+                                    style="
+                                        color:#64748b;
+                                        font-size:13px;
+                                    "
+                                >
+                                    AI content briefs will appear
+                                    here.
+                                </div>
+                            `
+                    }
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- RAW RESULT -->
+        <details
+            style="
+                margin-top:20px;
+                background:#f8fafc;
+                border:1px solid #e2e8f0;
+                border-radius:12px;
+                padding:14px;
+            "
+        >
+
+            <summary
+                style="
+                    cursor:pointer;
+                    font-weight:700;
+                    color:#475569;
+                "
+            >
+                View AI response data
+            </summary>
+
+            <pre
+                style="
+                    margin-top:14px;
+                    white-space:pre-wrap;
+                    word-break:break-word;
+                    font-size:12px;
+                    line-height:1.6;
+                    max-height:500px;
+                    overflow:auto;
+                "
+            >${aiEscape(
+                JSON.stringify(
+                    data,
+                    null,
+                    2
+                )
+            )}</pre>
+
+        </details>
+
+    `;
+}
+
+
+/*
+ * SEO AUDIT RESULT
+ */
+function renderSEOAudit(
+    data,
+    websiteUrl
+) {
+
+    const audit =
+        data?.audit ||
+        data?.result ||
+        data?.data ||
+        {};
+
+    const crawl =
+        data?.crawl ||
+        audit?.crawl ||
+        {};
+
+    const score =
+        Number(
+            data?.score ??
+            audit?.score ??
+            0
+        );
+
+    const warnings =
+        audit?.summary?.warnings ||
+        [];
+
+    const positives =
+        audit?.summary?.positive_signals ||
+        [];
+
+    const critical =
+        audit?.summary?.critical_issues ||
+        [];
+
+    return `
+
+        ${aiResultHeader(
+            "SEO Website Audit",
+            "Technical SEO, on-page SEO and website health analysis",
+            "🔍",
+            "linear-gradient(135deg,#0f766e,#0891b2,#2563eb)"
+        )}
+
+
+        <div
+            style="
+                display:grid;
+                grid-template-columns:
+                    repeat(
+                        auto-fit,
+                        minmax(180px,1fr)
+                    );
+                gap:16px;
+                margin-bottom:20px;
+            "
+        >
+
+            <div
+                style="
+                    padding:22px;
+                    border-radius:16px;
+                    background:
+                        linear-gradient(
+                            135deg,
+                            #dcfce7,
+                            #bbf7d0
+                        );
+                "
+            >
+
+                <div
+                    style="
+                        font-size:13px;
+                        font-weight:800;
+                        color:#166534;
+                    "
+                >
+                    SEO SCORE
+                </div>
+
+                <div
+                    style="
+                        font-size:46px;
+                        font-weight:900;
+                        color:#15803d;
+                        margin-top:5px;
+                    "
+                >
+                    ${aiEscape(score)}
+                </div>
+
+                <small>
+                    Overall observable score
+                </small>
+
+            </div>
+
+
+            <div
+                style="
+                    padding:22px;
+                    border-radius:16px;
+                    background:
+                        linear-gradient(
+                            135deg,
+                            #dbeafe,
+                            #bfdbfe
+                        );
+                "
+            >
+
+                <div
+                    style="
+                        font-size:13px;
+                        font-weight:800;
+                        color:#1d4ed8;
+                    "
+                >
+                    HTTP STATUS
+                </div>
+
+                <div
+                    style="
+                        font-size:34px;
+                        font-weight:900;
+                        color:#1d4ed8;
+                        margin-top:8px;
+                    "
+                >
+                    ${aiEscape(
+                        crawl.homepage_status ??
+                        "—"
+                    )}
+                </div>
+
+            </div>
+
+
+            <div
+                style="
+                    padding:22px;
+                    border-radius:16px;
+                    background:
+                        linear-gradient(
+                            135deg,
+                            #fef3c7,
+                            #fde68a
+                        );
+                "
+            >
+
+                <div
+                    style="
+                        font-size:13px;
+                        font-weight:800;
+                        color:#92400e;
+                    "
+                >
+                    RESPONSE TIME
+                </div>
+
+                <div
+                    style="
+                        font-size:34px;
+                        font-weight:900;
+                        color:#b45309;
+                        margin-top:8px;
+                    "
+                >
+                    ${aiEscape(
+                        crawl.response_time_ms ??
+                        "—"
+                    )} ms
+                </div>
+
+            </div>
+
+
+            <div
+                style="
+                    padding:22px;
+                    border-radius:16px;
+                    background:
+                        linear-gradient(
+                            135deg,
+                            #ede9fe,
+                            #ddd6fe
+                        );
+                "
+            >
+
+                <div
+                    style="
+                        font-size:13px;
+                        font-weight:800;
+                        color:#6d28d9;
+                    "
+                >
+                    WEBSITE
+                </div>
+
+                <div
+                    style="
+                        margin-top:8px;
+                        font-weight:800;
+                        color:#5b21b6;
+                        word-break:break-all;
+                    "
+                >
+                    ${aiEscape(
+                        websiteUrl
+                    )}
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div
+            style="
+                display:grid;
+                grid-template-columns:
+                    repeat(
+                        auto-fit,
+                        minmax(250px,1fr)
+                    );
+                gap:16px;
+            "
+        >
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:#fff;
+                    border:1px solid #fecaca;
+                "
+            >
+
+                <h3
+                    style="
+                        color:#dc2626;
+                        margin-top:0;
+                    "
+                >
+                    ⚠ Critical Issues
+                </h3>
+
+                ${
+                    critical.length
+                        ? critical
+                            .map(
+                                item =>
+                                    `<div
+                                        style="
+                                            padding:9px 0;
+                                            border-bottom:
+                                                1px solid #fee2e2;
+                                        "
+                                    >
+                                        ${aiEscape(
+                                            typeof item === "object"
+                                                ? (
+                                                    item.issue ||
+                                                    item.message ||
+                                                    JSON.stringify(item)
+                                                )
+                                                : item
+                                        )}
+                                    </div>`
+                            )
+                            .join("")
+                        : `
+                            <div
+                                style="
+                                    color:#15803d;
+                                    font-weight:700;
+                                "
+                            >
+                                ✓ No critical issues detected.
+                            </div>
+                        `
+                }
+
+            </div>
+
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:#fff;
+                    border:1px solid #fde68a;
+                "
+            >
+
+                <h3
+                    style="
+                        color:#b45309;
+                        margin-top:0;
+                    "
+                >
+                    ⚠ Warnings
+                </h3>
+
+                ${
+                    warnings.length
+                        ? warnings
+                            .map(
+                                item =>
+                                    `<div
+                                        style="
+                                            padding:9px 0;
+                                            border-bottom:
+                                                1px solid #fef3c7;
+                                        "
+                                    >
+                                        ${aiEscape(item)}
+                                    </div>`
+                            )
+                            .join("")
+                        : `
+                            <div
+                                style="
+                                    color:#15803d;
+                                    font-weight:700;
+                                "
+                            >
+                                ✓ No warnings detected.
+                            </div>
+                        `
+                }
+
+            </div>
+
+
+            <div
+                style="
+                    padding:20px;
+                    border-radius:16px;
+                    background:#fff;
+                    border:1px solid #bbf7d0;
+                "
+            >
+
+                <h3
+                    style="
+                        color:#15803d;
+                        margin-top:0;
+                    "
+                >
+                    ✓ Positive Signals
+                </h3>
+
+                ${
+                    positives.length
+                        ? positives
+                            .map(
+                                item =>
+                                    `<div
+                                        style="
+                                            padding:9px 0;
+                                            border-bottom:
+                                                1px solid #dcfce7;
+                                        "
+                                    >
+                                        ${aiEscape(item)}
+                                    </div>`
+                            )
+                            .join("")
+                        : `
+                            <div
+                                style="
+                                    color:#64748b;
+                                "
+                            >
+                                No positive signals returned.
+                            </div>
+                        `
+                }
+
+            </div>
+
+        </div>
+
+
+        <details
+            style="
+                margin-top:20px;
+                background:#f8fafc;
+                border:1px solid #e2e8f0;
+                border-radius:12px;
+                padding:14px;
+            "
+        >
+
+            <summary
+                style="
+                    cursor:pointer;
+                    font-weight:700;
+                "
+            >
+                View complete audit data
+            </summary>
+
+            <pre
+                style="
+                    margin-top:14px;
+                    white-space:pre-wrap;
+                    word-break:break-word;
+                    font-size:12px;
+                    max-height:600px;
+                    overflow:auto;
+                "
+            >${aiEscape(
+                JSON.stringify(
+                    data,
+                    null,
+                    2
+                )
+            )}</pre>
+
+        </details>
+
+    `;
+}
+
+
+/*
+ * WEEKLY EXECUTIVE REPORT
+ */
+function renderWeeklyReport(
+    data,
+    websiteUrl
+) {
+
+    const result =
+        data?.report ||
+        data?.result ||
+        data?.data ||
+        {};
+
+    return `
+
+        ${aiResultHeader(
+            "Weekly AI Growth Report",
+            "Executive overview of your website's current observable signals",
+            "📊",
+            "linear-gradient(135deg,#ea580c,#db2777,#7c3aed)"
+        )}
+
+
+        <div
+            style="
+                padding:22px;
+                border-radius:18px;
+                background:
+                    linear-gradient(
+                        135deg,
+                        #fff7ed,
+                        #fce7f3,
+                        #ede9fe
+                    );
+                margin-bottom:20px;
+            "
+        >
+
+            <div
+                style="
+                    font-size:13px;
+                    text-transform:uppercase;
+                    font-weight:800;
+                    color:#7c3aed;
+                "
+            >
+                Reporting Website
+            </div>
+
+            <div
+                style="
+                    font-size:20px;
+                    font-weight:900;
+                    margin-top:7px;
+                    word-break:break-all;
+                "
+            >
+                ${aiEscape(
+                    websiteUrl
+                )}
+            </div>
+
+        </div>
+
+
+        <div
+            style="
+                display:grid;
+                grid-template-columns:
+                    repeat(
+                        auto-fit,
+                        minmax(180px,1fr)
+                    );
+                gap:15px;
+                margin-bottom:20px;
+            "
+        >
+
+            <div
+                style="
+                    padding:22px;
+                    border-radius:16px;
+                    background:#dbeafe;
+                "
+            >
+                <div style="font-size:30px;">
+                    🌐
+                </div>
+                <strong
+                    style="
+                        display:block;
+                        margin-top:8px;
+                        color:#1d4ed8;
+                    "
+                >
+                    Website Signals
+                </strong>
+                <small>
+                    Current crawl and observable website
+                    information.
+                </small>
+            </div>
+
+
+            <div
+                style="
+                    padding:22px;
+                    border-radius:16px;
+                    background:#dcfce7;
+                "
+            >
+                <div style="font-size:30px;">
+                    📈
+                </div>
+                <strong
+                    style="
+                        display:block;
+                        margin-top:8px;
+                        color:#15803d;
+                    "
+                >
+                    Growth Signals
+                </strong>
+                <small>
+                    Identify measurable opportunities
+                    without inventing traffic data.
+                </small>
+            </div>
+
+
+            <div
+                style="
+                    padding:22px;
+                    border-radius:16px;
+                    background:#fef3c7;
+                "
+            >
+                <div style="font-size:30px;">
+                    🎯
+                </div>
+                <strong
+                    style="
+                        display:block;
+                        margin-top:8px;
+                        color:#b45309;
+                    "
+                >
+                    Next Actions
+                </strong>
+                <small>
+                    Prioritize the most useful actions
+                    for the coming week.
+                </small>
+            </div>
+
+
+            <div
+                style="
+                    padding:22px;
+                    border-radius:16px;
+                    background:#f3e8ff;
+                "
+            >
+                <div style="font-size:30px;">
+                    🤖
+                </div>
+                <strong
+                    style="
+                        display:block;
+                        margin-top:8px;
+                        color:#7e22ce;
+                    "
+                >
+                    AI Insights
+                </strong>
+                <small>
+                    Convert available signals into
+                    practical recommendations.
+                </small>
+            </div>
+
+        </div>
+
+
+        <div
+            style="
+                padding:20px;
+                border-radius:16px;
+                background:#111827;
+                color:#fff;
+            "
+        >
+
+            <h3
+                style="
+                    margin-top:0;
+                    color:#f9a8d4;
+                "
+            >
+                Executive Summary
+            </h3>
+
+            <div
+                style="
+                    line-height:1.8;
+                    color:#e5e7eb;
+                "
+            >
+                ${
+                    typeof result === "string"
+                        ? aiEscape(result)
+                        : aiEscape(
+                            result.summary ||
+                            result.executive_summary ||
+                            "The weekly report has been generated from currently available website signals."
+                        )
+                }
+            </div>
+
+        </div>
+
+
+        <details
+            style="
+                margin-top:20px;
+                background:#f8fafc;
+                border:1px solid #e2e8f0;
+                border-radius:12px;
+                padding:14px;
+            "
+        >
+
+            <summary
+                style="
+                    cursor:pointer;
+                    font-weight:700;
+                "
+            >
+                View complete report data
+            </summary>
+
+            <pre
+                style="
+                    margin-top:14px;
+                    white-space:pre-wrap;
+                    word-break:break-word;
+                    font-size:12px;
+                    max-height:600px;
+                    overflow:auto;
+                "
+            >${aiEscape(
+                JSON.stringify(
+                    data,
+                    null,
+                    2
+                )
+            )}</pre>
+
+        </details>
+
+    `;
+}
+
+
+/*
+ * Main renderer.
+ */
+function renderAIResult(
+    agentName,
+    data,
+    websiteUrl
+) {
+
+    const output =
+        $("out");
+
+    if (!output) {
+        return;
+    }
+
+    if (
+        agentName ===
+        "seo_strategist"
+    ) {
+
+        output.innerHTML =
+            renderSEOStrategy(
+                data,
+                websiteUrl
+            );
+
+        return;
+    }
+
+
+    if (
+        agentName ===
+        "seo_auditor"
+    ) {
+
+        output.innerHTML =
+            renderSEOAudit(
+                data,
+                websiteUrl
+            );
+
+        return;
+    }
+
+
+    if (
+        agentName ===
+        "executive_report"
+    ) {
+
+        output.innerHTML =
+            renderWeeklyReport(
+                data,
+                websiteUrl
+            );
+
+        return;
+    }
+
+
+    /*
+     * Fallback for future AI agents.
+     */
+    output.innerHTML = `
+        <div
+            style="
+                padding:20px;
+                background:#f8fafc;
+                border-radius:16px;
+            "
+        >
+
+            <h3>
+                AI Result
+            </h3>
+
+            <pre
+                style="
+                    white-space:pre-wrap;
+                    word-break:break-word;
+                "
+            >${aiEscape(
+                JSON.stringify(
+                    data,
+                    null,
+                    2
+                )
+            )}</pre>
+
+        </div>
+    `;
+}
+
+
+/*
+ * Execute AI agent.
+ */
 async function agent(
-    agent,
+    agentName,
     task,
     provider = "gemini"
 ) {
@@ -1487,7 +3194,81 @@ async function agent(
     }
 
 
-    aiShowLoading();
+    const websiteUrl =
+        getCurrentWebsiteUrl();
+
+
+    $("out").innerHTML = `
+
+        <div
+            style="
+                padding:30px;
+                text-align:center;
+                border-radius:18px;
+                background:
+                    linear-gradient(
+                        135deg,
+                        #eef2ff,
+                        #ecfeff,
+                        #f0fdf4
+                    );
+            "
+        >
+
+            <div
+                style="
+                    font-size:42px;
+                    animation:
+                        aiPulse 1.2s infinite;
+                "
+            >
+                🤖
+            </div>
+
+            <h3
+                style="
+                    margin:12px 0 5px;
+                "
+            >
+                AI is working…
+            </h3>
+
+            <p
+                style="
+                    color:#64748b;
+                    margin:0;
+                "
+            >
+                Preparing ${aiEscape(
+                    agentName === "seo_auditor"
+                        ? "SEO audit"
+                        : agentName === "seo_strategist"
+                            ? "SEO strategy"
+                            : "weekly report"
+                )}.
+            </p>
+
+        </div>
+
+        <style>
+            @keyframes aiPulse {
+                0% {
+                    transform:scale(1);
+                    opacity:.65;
+                }
+
+                50% {
+                    transform:scale(1.15);
+                    opacity:1;
+                }
+
+                100% {
+                    transform:scale(1);
+                    opacity:.65;
+                }
+            }
+        </style>
+    `;
 
 
     try {
@@ -1503,15 +3284,18 @@ async function agent(
 
         if (!currentSession) {
 
-            $("out").textContent =
-                JSON.stringify(
-                    {
-                        error:
-                            "You are not logged in."
-                    },
-                    null,
-                    2
-                );
+            $("out").innerHTML = `
+                <div
+                    style="
+                        padding:20px;
+                        background:#fee2e2;
+                        color:#991b1b;
+                        border-radius:12px;
+                    "
+                >
+                    You are not logged in.
+                </div>
+            `;
 
             return;
         }
@@ -1521,7 +3305,6 @@ async function agent(
             await fetch(
                 "/api/ai",
                 {
-
                     method:
                         "POST",
 
@@ -1534,13 +3317,13 @@ async function agent(
 
                         "Content-Type":
                             "application/json"
-
                     },
 
                     body:
                         JSON.stringify({
 
-                            agent,
+                            agent:
+                                agentName,
 
                             task,
 
@@ -1552,24 +3335,19 @@ async function agent(
                             context: {
 
                                 url:
-                                    currentSites[0].url
+                                    websiteUrl
 
                             }
 
                         })
-
                 }
             );
 
 
         /*
-         * Read the response as TEXT first.
-         *
-         * This allows us to display useful
-         * Cloudflare/server errors even when
-         * the server does not return JSON.
+         * Read as text first so server errors
+         * can still be displayed.
          */
-
         const responseText =
             await response.text();
 
@@ -1601,16 +3379,38 @@ async function agent(
                     responseText
 
             };
+
         }
 
 
-        aiRenderResult(data);
+        if (!response.ok) {
 
+            renderAIResult(
+                agentName,
+                data,
+                websiteUrl
+            );
 
-        if (response.ok) {
-
-            await load();
+            return;
         }
+
+
+        /*
+         * IMPORTANT:
+         * Each AI agent now receives its own renderer.
+         */
+        renderAIResult(
+            agentName,
+            data,
+            websiteUrl
+        );
+
+
+        /*
+         * Refresh dashboard data after successful
+         * AI operation.
+         */
+        await load();
 
 
     } catch (error) {
@@ -1621,21 +3421,32 @@ async function agent(
         );
 
 
-        $("out").textContent =
-            JSON.stringify(
-                {
+        $("out").innerHTML = `
 
-                    error:
-                        "AI request failed",
+            <div
+                style="
+                    padding:22px;
+                    border-radius:16px;
+                    background:#fee2e2;
+                    border:1px solid #fecaca;
+                    color:#991b1b;
+                "
+            >
 
-                    details:
+                <h3>
+                    AI request failed
+                </h3>
+
+                <div>
+                    ${aiEscape(
                         error?.message ||
                         String(error)
+                    )}
+                </div>
 
-                },
-                null,
-                2
-            );
+            </div>
+
+        `;
     }
 }
 
@@ -1644,6 +3455,10 @@ async function agent(
    AI BUTTONS
 ========================= */
 
+
+/*
+ * RUN AI AUDIT
+ */
 if ($("audit")) {
 
     $("audit").onclick =
@@ -1651,13 +3466,35 @@ if ($("audit")) {
             agent(
                 "seo_auditor",
 
-                "Audit technical SEO, on-page SEO, content quality and observable performance. Return evidence-backed prioritized recommendations.",
+                `
+                Audit technical SEO, on-page SEO,
+                content quality and observable performance.
+
+                Return evidence-backed prioritized
+                recommendations.
+
+                Include:
+                - SEO score
+                - technical SEO
+                - title and meta description
+                - headings
+                - images and ALT text
+                - robots.txt
+                - sitemap
+                - structured data
+                - HTTPS
+                - performance signals
+                - prioritized actions
+                `,
 
                 "gemini"
             );
 }
 
 
+/*
+ * GENERATE SEO STRATEGY
+ */
 if ($("strategy")) {
 
     $("strategy").onclick =
@@ -1665,13 +3502,37 @@ if ($("strategy")) {
             agent(
                 "seo_strategist",
 
-                "Create a 30-day SEO strategy with keyword themes, page opportunities, internal linking and content briefs. Mark assumptions.",
+                `
+                Create a detailed 30-day SEO strategy.
+
+                Include:
+
+                1. Keyword themes
+                2. Page opportunities
+                3. Internal linking opportunities
+                4. Content briefs
+                5. Technical SEO actions
+                6. AI search visibility opportunities
+                7. Entity and topical authority opportunities
+                8. Weekly implementation plan
+
+                Clearly separate observed facts from
+                recommendations and assumptions.
+
+                The dashboard should visually present
+                the website as being prepared for
+                discovery across 25+ AI and search
+                engines.
+                `,
 
                 "gemini"
             );
 }
 
 
+/*
+ * GENERATE WEEKLY REPORT
+ */
 if ($("report")) {
 
     $("report").onclick =
@@ -1679,12 +3540,26 @@ if ($("report")) {
             agent(
                 "executive_report",
 
-                "Create a weekly executive report template based on currently available website signals. Never invent traffic or rankings.",
+                `
+                Create a weekly executive website report.
+
+                Include:
+
+                1. Executive summary
+                2. Current website signals
+                3. SEO changes
+                4. Content opportunities
+                5. Technical issues
+                6. AI visibility opportunities
+                7. Recommended actions for the next 7 days
+
+                Never invent traffic, ranking or revenue
+                figures when those metrics are unavailable.
+                `,
 
                 "gemini"
             );
 }
-
 
 /* =========================
    BILLING
