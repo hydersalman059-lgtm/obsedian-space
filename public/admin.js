@@ -171,9 +171,6 @@ function loading(message = "Loading...") {
    LOADING COMPATIBILITY
 ========================================================= */
 
-function showLoading(message = "Loading...") {
-    loading(message);
-}
 
 
 
@@ -385,100 +382,103 @@ async function api(
    GENERIC ADMIN ACTION
 ========================================================= */
 
-async function adminAction(
-    action,
-    payload = {}
-) {
-
-    const current =
-        await requireSession();
+async function adminAction(action, payload = {}, section = null) {
+    const current = await requireSession();
 
     if (!current) {
         return null;
     }
 
+    /*
+     * Automatically determine section when not supplied.
+     */
+    if (!section) {
+        const actionSections = {
+            update_user: "users",
+            extend_subscription: "users",
+            pause_subscription: "users",
+            resume_subscription: "users",
+
+            update_website: "websites",
+            archive_website: "websites",
+            restore_website: "websites",
+
+            update_branding: "settings"
+        };
+
+        section = actionSections[action] || null;
+    }
+
+    if (!section) {
+        throw new Error(
+            `No admin section mapped for action: ${action}`
+        );
+    }
+
+    const params = new URLSearchParams();
+    params.set("section", section);
 
     const url =
         `${window.OBSEDIAN_CONFIG.SUPABASE_URL}` +
-        `/functions/v1/admin`;
+        `/functions/v1/admin?` +
+        params.toString();
 
-
-    console.log(
-        "Admin action:",
+    console.log("[ADMIN] POST:", {
+        section,
         action,
         payload
-    );
+    });
 
+    const response = await fetch(url, {
+        method: "POST",
 
-    const response =
-        await fetch(
-            url,
-            {
-                method: "POST",
+        headers: {
+            Authorization:
+                `Bearer ${current.access_token}`,
 
-                headers: {
+            apikey:
+                window.OBSEDIAN_CONFIG
+                    .SUPABASE_PUBLISHABLE_KEY,
 
-                    Authorization:
-                        `Bearer ${current.access_token}`,
+            "Content-Type":
+                "application/json"
+        },
 
-                    apikey:
-                        window.OBSEDIAN_CONFIG
-                            .SUPABASE_PUBLISHABLE_KEY,
+        body: JSON.stringify({
+            action,
+            ...payload
+        })
+    });
 
-                    "Content-Type":
-                        "application/json"
-                },
-
-                body:
-                    JSON.stringify({
-                        action,
-                        ...payload
-                    })
-            }
-        );
-
-
-    const raw =
-        await response.text();
-
+    const raw = await response.text();
 
     let data = {};
 
     try {
-
-        data =
-            raw
-                ? JSON.parse(raw)
-                : {};
-
+        data = raw
+            ? JSON.parse(raw)
+            : {};
     } catch {
-
         data = {
-            error: raw
+            error:
+                raw ||
+                "Invalid server response."
         };
     }
 
-
-    console.log(
-        "Admin action status:",
-        response.status
-    );
-
-    console.log(
-        "Admin action response:",
+    console.log("[ADMIN] Response:", {
+        status: response.status,
         data
-    );
-
+    });
 
     if (!response.ok) {
-
         throw new Error(
             data?.error ||
             data?.message ||
+            data?.details ||
             `Action failed (${response.status})`
         );
     }
-
 
     return data;
 }
@@ -2364,6 +2364,7 @@ async function loadWebsites() {
             </div>
 
         `;
+        bindWebsiteEditDeleteButtons(websites);
 
 
         /* =====================================================
@@ -2859,349 +2860,388 @@ async function loadWebsites() {
 }
 
 /* =====================================================
-   EDIT WEBSITE
+   WEBSITE BUTTON HANDLERS
+   IMPORTANT:
+   These buttons are dynamically created by loadWebsites(),
+   so listeners MUST be attached after rendering.
 ===================================================== */
 
-document
-    .querySelectorAll(
-        ".website-edit-btn"
-    )
-    .forEach(
-        button => {
+function bindWebsiteEditDeleteButtons(websites) {
 
-            button.addEventListener(
-                "click",
-                () => {
+    /* =====================================================
+       EDIT WEBSITE
+    ===================================================== */
 
-                    const index =
-                        Number(
-                            button.dataset.index
-                        );
+    document
+        .querySelectorAll(".website-edit-btn")
+        .forEach(button => {
 
-                    const site =
-                        websites[index];
+            button.addEventListener("click", () => {
 
+                const index =
+                    Number(button.dataset.index);
 
-                    if (!site) {
-                        return;
-                    }
+                const site =
+                    websites[index];
 
+                if (!site) {
+                    console.error(
+                        "Website not found for edit:",
+                        index
+                    );
+                    return;
+                }
 
-                    const modal =
-                        document.createElement(
-                            "div"
-                        );
+                const modal =
+                    document.createElement("div");
 
+                modal.style.cssText = `
+                    position:fixed;
+                    inset:0;
+                    background:rgba(0,0,0,.55);
+                    z-index:10000;
+                    padding:20px;
+                    overflow:auto;
+                `;
 
-                    modal.style.cssText = `
-                        position:fixed;
-                        inset:0;
-                        background:rgba(0,0,0,.55);
-                        z-index:10000;
-                        padding:20px;
-                        overflow:auto;
-                    `;
+                modal.innerHTML = `
+                    <div style="
+                        max-width:650px;
+                        margin:60px auto;
+                        background:#fff;
+                        border-radius:14px;
+                        padding:24px;
+                        box-shadow:0 20px 60px rgba(0,0,0,.25);
+                    ">
 
+                        <div style="
+                            display:flex;
+                            justify-content:space-between;
+                            align-items:center;
+                            margin-bottom:20px;
+                        ">
 
-                    modal.innerHTML = `
-                        <div
-                            style="
-                                max-width:650px;
-                                margin:60px auto;
-                                background:#fff;
-                                border-radius:14px;
-                                padding:24px;
-                                box-shadow:0 20px 60px rgba(0,0,0,.25);
-                            "
-                        >
+                            <h2 style="margin:0;">
+                                Edit Website
+                            </h2>
 
-                            <div
+                            <button
+                                type="button"
+                                id="closeWebsiteEdit"
                                 style="
-                                    display:flex;
-                                    justify-content:space-between;
-                                    align-items:center;
-                                    margin-bottom:20px;
+                                    border:0;
+                                    background:none;
+                                    font-size:28px;
+                                    cursor:pointer;
                                 "
                             >
-
-                                <h2 style="margin:0;">
-                                    Edit Website
-                                </h2>
-
-                                <button
-                                    type="button"
-                                    id="closeWebsiteEdit"
-                                >
-                                    ×
-                                </button>
-
-                            </div>
-
-
-                            <label
-                                style="
-                                    display:block;
-                                    margin-bottom:16px;
-                                "
-                            >
-
-                                <strong>
-                                    Website Name
-                                </strong>
-
-                                <input
-                                    id="editWebsiteName"
-                                    type="text"
-                                    value="${escapeHtml(
-                                        site.name || ""
-                                    )}"
-                                    style="
-                                        width:100%;
-                                        padding:11px;
-                                        margin-top:6px;
-                                        border:1px solid #d1d5db;
-                                        border-radius:8px;
-                                    "
-                                >
-
-                            </label>
-
-
-                            <label
-                                style="
-                                    display:block;
-                                    margin-bottom:16px;
-                                "
-                            >
-
-                                <strong>
-                                    Website URL
-                                </strong>
-
-                                <input
-                                    id="editWebsiteUrl"
-                                    type="url"
-                                    value="${escapeHtml(
-                                        site.url || ""
-                                    )}"
-                                    placeholder="https://example.com"
-                                    style="
-                                        width:100%;
-                                        padding:11px;
-                                        margin-top:6px;
-                                        border:1px solid #d1d5db;
-                                        border-radius:8px;
-                                    "
-                                >
-
-                            </label>
-
-
-                            <label
-                                style="
-                                    display:block;
-                                    margin-bottom:16px;
-                                "
-                            >
-
-                                <strong>
-                                    Status
-                                </strong>
-
-                                <select
-                                    id="editWebsiteStatus"
-                                    style="
-                                        width:100%;
-                                        padding:11px;
-                                        margin-top:6px;
-                                        border:1px solid #d1d5db;
-                                        border-radius:8px;
-                                    "
-                                >
-
-                                    <option
-                                        value="active"
-                                        ${site.status === "active"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Active
-                                    </option>
-
-                                    <option
-                                        value="inactive"
-                                        ${site.status === "inactive"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Inactive
-                                    </option>
-
-                                    <option
-                                        value="pending"
-                                        ${site.status === "pending"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Pending
-                                    </option>
-
-                                    <option
-                                        value="error"
-                                        ${site.status === "error"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Error
-                                    </option>
-
-                                </select>
-
-                            </label>
-
-
-                            <label
-                                style="
-                                    display:block;
-                                    margin-bottom:22px;
-                                "
-                            >
-
-                                <strong>
-                                    Crawl Frequency
-                                </strong>
-
-                                <select
-                                    id="editWebsiteFrequency"
-                                    style="
-                                        width:100%;
-                                        padding:11px;
-                                        margin-top:6px;
-                                        border:1px solid #d1d5db;
-                                        border-radius:8px;
-                                    "
-                                >
-
-                                    <option
-                                        value="manual"
-                                        ${site.crawl_frequency === "manual"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Manual
-                                    </option>
-
-                                    <option
-                                        value="hourly"
-                                        ${site.crawl_frequency === "hourly"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Hourly
-                                    </option>
-
-                                    <option
-                                        value="daily"
-                                        ${site.crawl_frequency === "daily"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Daily
-                                    </option>
-
-                                    <option
-                                        value="weekly"
-                                        ${site.crawl_frequency === "weekly"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Weekly
-                                    </option>
-
-                                    <option
-                                        value="monthly"
-                                        ${site.crawl_frequency === "monthly"
-                                            ? "selected"
-                                            : ""}
-                                    >
-                                        Monthly
-                                    </option>
-
-                                </select>
-
-                            </label>
-
-
-                            <div
-                                style="
-                                    display:flex;
-                                    justify-content:flex-end;
-                                    gap:10px;
-                                "
-                            >
-
-                                <button
-                                    type="button"
-                                    id="cancelWebsiteEdit"
-                                >
-                                    Cancel
-                                </button>
-
-                                <button
-                                    type="button"
-                                    id="saveWebsiteEdit"
-                                >
-                                    Save Changes
-                                </button>
-
-                            </div>
+                                ×
+                            </button>
 
                         </div>
-                    `;
 
+                        <label style="
+                            display:block;
+                            margin-bottom:16px;
+                        ">
 
-                    document.body.appendChild(
-                        modal
+                            <strong>
+                                Website Name
+                            </strong>
+
+                            <input
+                                id="editWebsiteName"
+                                type="text"
+                                value="${escapeHtml(
+                                    site.name || ""
+                                )}"
+                                style="
+                                    width:100%;
+                                    padding:11px;
+                                    margin-top:6px;
+                                    border:1px solid #d1d5db;
+                                    border-radius:8px;
+                                    box-sizing:border-box;
+                                "
+                            >
+
+                        </label>
+
+                        <label style="
+                            display:block;
+                            margin-bottom:16px;
+                        ">
+
+                            <strong>
+                                Website URL
+                            </strong>
+
+                            <input
+                                id="editWebsiteUrl"
+                                type="url"
+                                value="${escapeHtml(
+                                    site.url || ""
+                                )}"
+                                placeholder="https://example.com"
+                                style="
+                                    width:100%;
+                                    padding:11px;
+                                    margin-top:6px;
+                                    border:1px solid #d1d5db;
+                                    border-radius:8px;
+                                    box-sizing:border-box;
+                                "
+                            >
+
+                        </label>
+
+                        <label style="
+                            display:block;
+                            margin-bottom:16px;
+                        ">
+
+                            <strong>
+                                Status
+                            </strong>
+
+                            <select
+                                id="editWebsiteStatus"
+                                style="
+                                    width:100%;
+                                    padding:11px;
+                                    margin-top:6px;
+                                    border:1px solid #d1d5db;
+                                    border-radius:8px;
+                                "
+                            >
+
+                                <option
+                                    value="active"
+                                    ${
+                                        site.status === "active"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Active
+                                </option>
+
+                                <option
+                                    value="inactive"
+                                    ${
+                                        site.status === "inactive"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Inactive
+                                </option>
+
+                                <option
+                                    value="pending"
+                                    ${
+                                        site.status === "pending"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Pending
+                                </option>
+
+                                <option
+                                    value="error"
+                                    ${
+                                        site.status === "error"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Error
+                                </option>
+
+                            </select>
+
+                        </label>
+
+                        <label style="
+                            display:block;
+                            margin-bottom:20px;
+                        ">
+
+                            <strong>
+                                Crawl Frequency
+                            </strong>
+
+                            <select
+                                id="editWebsiteCrawl"
+                                style="
+                                    width:100%;
+                                    padding:11px;
+                                    margin-top:6px;
+                                    border:1px solid #d1d5db;
+                                    border-radius:8px;
+                                "
+                            >
+
+                                <option
+                                    value="manual"
+                                    ${
+                                        site.crawl_frequency === "manual"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Manual
+                                </option>
+
+                                <option
+                                    value="hourly"
+                                    ${
+                                        site.crawl_frequency === "hourly"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Hourly
+                                </option>
+
+                                <option
+                                    value="daily"
+                                    ${
+                                        site.crawl_frequency === "daily"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Daily
+                                </option>
+
+                                <option
+                                    value="weekly"
+                                    ${
+                                        site.crawl_frequency === "weekly"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Weekly
+                                </option>
+
+                                <option
+                                    value="monthly"
+                                    ${
+                                        site.crawl_frequency === "monthly"
+                                            ? "selected"
+                                            : ""
+                                    }
+                                >
+                                    Monthly
+                                </option>
+
+                            </select>
+
+                        </label>
+
+                        <div style="
+                            display:flex;
+                            justify-content:flex-end;
+                            gap:10px;
+                        ">
+
+                            <button
+                                type="button"
+                                id="cancelWebsiteEdit"
+                                style="
+                                    padding:10px 18px;
+                                    border:1px solid #d1d5db;
+                                    background:#fff;
+                                    border-radius:8px;
+                                    cursor:pointer;
+                                "
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                id="saveWebsiteEdit"
+                                style="
+                                    padding:10px 18px;
+                                    border:0;
+                                    background:#2563eb;
+                                    color:#fff;
+                                    border-radius:8px;
+                                    cursor:pointer;
+                                "
+                            >
+                                Save Changes
+                            </button>
+
+                        </div>
+
+                    </div>
+                `;
+
+                document.body.appendChild(modal);
+
+                const close = () => {
+                    modal.remove();
+                };
+
+                document
+                    .getElementById("closeWebsiteEdit")
+                    ?.addEventListener(
+                        "click",
+                        close
                     );
 
+                document
+                    .getElementById("cancelWebsiteEdit")
+                    ?.addEventListener(
+                        "click",
+                        close
+                    );
 
-                    const close =
-                        () =>
-                            modal.remove();
-
-
-                    $("closeWebsiteEdit").onclick =
-                        close;
-
-                    $("cancelWebsiteEdit").onclick =
-                        close;
-
-
-                    $("saveWebsiteEdit").onclick =
+                document
+                    .getElementById("saveWebsiteEdit")
+                    ?.addEventListener(
+                        "click",
                         async () => {
 
                             const saveButton =
-                                $("saveWebsiteEdit");
-
+                                document.getElementById(
+                                    "saveWebsiteEdit"
+                                );
 
                             const name =
-                                $("editWebsiteName")
-                                    .value
+                                document
+                                    .getElementById(
+                                        "editWebsiteName"
+                                    )
+                                    ?.value
                                     .trim();
 
                             const url =
-                                $("editWebsiteUrl")
-                                    .value
+                                document
+                                    .getElementById(
+                                        "editWebsiteUrl"
+                                    )
+                                    ?.value
                                     .trim();
 
                             const status =
-                                $("editWebsiteStatus")
-                                    .value;
+                                document
+                                    .getElementById(
+                                        "editWebsiteStatus"
+                                    )
+                                    ?.value;
 
                             const crawlFrequency =
-                                $("editWebsiteFrequency")
-                                    .value;
-
+                                document
+                                    .getElementById(
+                                        "editWebsiteCrawl"
+                                    )
+                                    ?.value;
 
                             if (!name) {
 
@@ -3211,9 +3251,20 @@ document
                                 );
 
                                 return;
-
                             }
 
+                            if (
+                                url &&
+                                !/^https?:\/\/.+/i.test(url)
+                            ) {
+
+                                showMessage(
+                                    "Website URL must start with http:// or https://.",
+                                    "error"
+                                );
+
+                                return;
+                            }
 
                             try {
 
@@ -3223,6 +3274,18 @@ document
                                 saveButton.textContent =
                                     "Saving...";
 
+                                console.log(
+                                    "[ADMIN] Updating website:",
+                                    {
+                                        website_id:
+                                            site.id,
+                                        name,
+                                        url,
+                                        status,
+                                        crawl_frequency:
+                                            crawlFrequency
+                                    }
+                                );
 
                                 await adminAction(
                                     "update_website",
@@ -3241,77 +3304,62 @@ document
                                     }
                                 );
 
-
                                 showMessage(
                                     "Website updated successfully."
                                 );
-
 
                                 close();
 
                                 await loadWebsites();
 
-
-                            } catch (
-                                error
-                            ) {
+                            } catch (error) {
 
                                 console.error(
                                     "Website update error:",
                                     error
                                 );
 
-
                                 showMessage(
-                                    error.message ||
+                                    error?.message ||
                                     "Unable to update website.",
                                     "error"
                                 );
-
 
                                 saveButton.disabled =
                                     false;
 
                                 saveButton.textContent =
                                     "Save Changes";
-
                             }
-
-                        };
-
-
-                    modal.addEventListener(
-                        "click",
-                        event => {
-
-                            if (
-                                event.target ===
-                                modal
-                            ) {
-
-                                close();
-
-                            }
-
                         }
                     );
 
-                }
-            );
+                modal.addEventListener(
+                    "click",
+                    event => {
 
-        }
-    );
+                        if (
+                            event.target ===
+                            modal
+                        ) {
+                            close();
+                        }
+
+                    }
+                );
+
+            });
+
+        });
+
 
     /* =====================================================
-   DELETE WEBSITE
-===================================================== */
+       DELETE WEBSITE
+    ===================================================== */
 
-document
-    .querySelectorAll(
-        ".website-delete-btn"
-    )
-    .forEach(
-        button => {
+    document
+        .querySelectorAll(".website-delete-btn")
+        .forEach(button => {
 
             button.addEventListener(
                 "click",
@@ -3325,22 +3373,24 @@ document
                     const site =
                         websites[index];
 
-
                     if (!site) {
+
+                        console.error(
+                            "Website not found for delete:",
+                            index
+                        );
+
                         return;
                     }
-
 
                     const confirmed =
                         confirm(
                             `Delete "${site.name || "this website"}"?\n\nThis action cannot be undone.`
                         );
 
-
                     if (!confirmed) {
                         return;
                     }
-
 
                     try {
 
@@ -3350,6 +3400,10 @@ document
                         button.textContent =
                             "Deleting...";
 
+                        console.log(
+                            "[ADMIN] Deleting website:",
+                            site.id
+                        );
 
                         await adminAction(
                             "delete_website",
@@ -3359,46 +3413,38 @@ document
                             }
                         );
 
-
                         showMessage(
                             "Website deleted successfully."
                         );
 
-
                         await loadWebsites();
 
-
-                    } catch (
-                        error
-                    ) {
+                    } catch (error) {
 
                         console.error(
                             "Website delete error:",
                             error
                         );
 
-
                         showMessage(
-                            error.message ||
+                            error?.message ||
                             "Unable to delete website.",
                             "error"
                         );
-
 
                         button.disabled =
                             false;
 
                         button.textContent =
                             "Delete";
-
                     }
 
                 }
             );
 
-        }
-    );
+        });
 
+}
 
 /* =========================================================
    SUBSCRIPTIONS
