@@ -3967,6 +3967,56 @@ async function loadSubscriptions() {
 
 
         /* =====================================================
+           PAYMENT VERIFICATION NOTICE
+           Rendered separately so it cannot interfere with the
+           existing Payments or Website Update event handlers.
+        ===================================================== */
+
+        const paymentsContent = $("content");
+
+        if (paymentsContent) {
+
+            const notice = document.createElement("div");
+
+            notice.style.margin = "0 0 18px 0";
+            notice.style.padding = "16px 18px";
+            notice.style.borderRadius = "12px";
+            notice.style.border = "1px solid #f6d365";
+            notice.style.background =
+                "linear-gradient(135deg,#fff7d6,#fffaf0)";
+            notice.style.color = "#6b4f00";
+            notice.style.lineHeight = "1.6";
+
+            notice.innerHTML = `
+                <strong
+                    style="display:block;margin-bottom:5px;"
+                >
+                    Payment verification is currently disabled
+                </strong>
+
+                <span style="font-size:14px;">
+                    This section displays payment records already stored
+                    in the database. No live payment gateway verification
+                    or real-money transaction is performed.
+                </span>
+            `;
+
+            const paymentCard =
+                paymentsContent.querySelector(".card");
+
+            if (paymentCard) {
+                paymentCard.insertBefore(
+                    notice,
+                    paymentCard.firstChild
+                );
+            } else {
+                paymentsContent.prepend(notice);
+            }
+
+        }
+
+
+        /* =====================================================
            REFRESH
         ===================================================== */
 
