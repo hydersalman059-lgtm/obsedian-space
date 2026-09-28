@@ -15,7 +15,6 @@ import {
 ========================================================= */
 
 Deno.serve(async (req) => {
-    try {
 
     /* =====================================================
        CORS
@@ -165,9 +164,9 @@ Deno.serve(async (req) => {
         new URL(req.url);
 
     const section =
-        (url.searchParams.get("section") || "dashboard")
-            .trim()
-            .toLowerCase();
+        url.searchParams.get(
+            "section"
+        ) || "dashboard";
 
     const search =
         (
@@ -184,6 +183,7 @@ Deno.serve(async (req) => {
     ===================================================== */
 
     if (req.method === "POST") {
+
         let body: any;
 
         try {
@@ -195,62 +195,130 @@ Deno.serve(async (req) => {
             );
         }
 
-        const action = String(body?.action || "").trim();
+        /* -----------------------------------------------------
+           APPROVAL MANAGEMENT
+           These actions intentionally do not depend on the
+           section query parameter so the existing adminAction()
+           POST helper can call them directly.
+        ----------------------------------------------------- */
 
-        /*
-         * Prefer the URL section, but also accept section in the
-         * request body. Finally infer it from the action so older
-         * frontend callers remain compatible.
-         */
-        const actionSections: Record<string, string> = {
-            update_user: "users",
-            extend_subscription: "users",
-            pause_subscription: "users",
-            resume_subscription: "users",
+        const approvalAction = String(body?.action || "").trim();
 
-            update_website: "websites",
-            archive_website: "websites",
-            restore_website: "websites",
-            delete_website: "websites",
+        if (approvalAction === "approve_approval" || approvalAction === "reject_approval") {
+            const approvalId = String(body?.approval_id || "").trim();
 
-            update_branding: "settings"
-        };
+            if (!approvalId) {
+                return json({ error: "approval_id is required." }, 400);
+            }
 
-        const requestSection =
-            String(
-                url.searchParams.get("section") ||
-                body?.section ||
-                actionSections[action] ||
-                ""
-            )
-                .trim()
-                .toLowerCase();
+            const { data: approval, error: approvalLookupError } = await sb
+                .from("approvals")
+                .select("id,user_id,website_id,action_type,title,description,proposed_change,risk_level,status,approved_at,executed_at,created_at")
+                .eq("id", approvalId)
+                .maybeSingle();
 
-        if (!requestSection) {
-            return json(
-                {
-                    error: "Admin section is required.",
-                    action
-                },
-                400
-            );
+            if (approvalLookupError) {
+                return json({
+                    error: "Unable to load approval.",
+                    details: approvalLookupError.message
+                }, 500);
+            }
+
+            if (!approval) {
+                return json({ error: "Approval record not found." }, 404);
+            }
+
+            if (String(approval.status).toLowerCase() !== "pending") {
+                return json({
+                    error: `This approval is already ${approval.status}. Only pending approvals can be changed.`
+                }, 409);
+            }
+
+            const now = new Date().toISOString();
+            const approved = approvalAction === "approve_approval";
+            const nextStatus = approved ? "approved" : "rejected";
+
+            const { data: updatedApproval, error: updateApprovalError } = await sb
+                .from("approvals")
+                .update({
+                    status: nextStatus,
+                    approved_at: approved ? now : null
+                })
+                .eq("id", approvalId)
+                .eq("status", "pending")
+                .select("*")
+                .maybeSingle();
+
+            if (updateApprovalError) {
+                console.error("Approval update error:", updateApprovalError);
+                return json({
+                    error: `Unable to ${approved ? "approve" : "reject"} approval.`,
+                    details: updateApprovalError.message
+                }, 500);
+            }
+
+            if (!updatedApproval) {
+                return json({
+                    error: "Approval was changed by another administrator. Refresh and try again."
+                }, 409);
+            }
+
+            /* Best-effort audit entry. Approval state is not rolled back
+               if an older audit_logs schema does not accept these fields. */
+            try {
+                const auditMetadata = {
+                    approval_id: approval.id,
+                    approval_status: nextStatus,
+                    approval_title: approval.title || null,
+                    action_type: approval.action_type || null,
+                    website_id: approval.website_id || null,
+                    risk_level: approval.risk_level || null,
+                    reason: approved ? null : String(body?.reason || "").trim().slice(0, 2000),
+                    proposed_change: approval.proposed_change || {}
+                };
+
+                const { error: auditError } = await sb
+                    .from("audit_logs")
+                    .insert({
+                        user_id: user.id,
+                        action: approved ? "approve_approval" : "reject_approval",
+                        entity_type: "approval",
+                        entity_id: approval.id,
+                        metadata: auditMetadata
+                    });
+
+                if (auditError) {
+                    console.error("Approval audit log error:", auditError);
+                }
+            } catch (auditException) {
+                console.error("Approval audit logging exception:", auditException);
+            }
+
+            return json({
+                success: true,
+                section: "approvals",
+                approval: updatedApproval,
+                message: approved
+                    ? "Approval approved successfully."
+                    : "Approval rejected successfully."
+            });
         }
 
         /* -----------------------------------------------------
            USER MANAGEMENT
         ----------------------------------------------------- */
 
-        if (requestSection === "users") {
+        if (section === "users") {
+
+            const action = String(body?.action || "").trim();
             const userId = String(body?.user_id || "").trim();
 
             if (!userId) {
-                return json(
-                    { error: "user_id is required." },
-                    400
-                );
+                return json({ error: "user_id is required." }, 400);
             }
 
             if (action === "update_user") {
+
                 const role = body?.role !== undefined
                     ? String(body.role).trim().toLowerCase()
                     : null;
@@ -271,43 +339,29 @@ Deno.serve(async (req) => {
                     return json({ error: "Invalid role." }, 400);
                 }
 
-                if (
-                    userId === user.id &&
-                    role !== null &&
-                    role !== "admin"
-                ) {
-                    return json(
-                        {
-                            error:
-                                "You cannot remove administrator access from your own account."
-                        },
-                        400
-                    );
-                }
 
-                if (
-                    billingCycle !== null &&
-                    !["free", "monthly", "yearly"].includes(billingCycle)
-                ) {
+               if (
+    action === "update_user" &&
+    userId === user.id &&
+    role !== null &&
+    role !== "admin"
+) {
+    return json(
+        {
+            error:
+                "You cannot remove administrator access from your own account."
+        },
+        400
+    );
+}
+
+
+                if (billingCycle !== null && !["free", "monthly", "yearly"].includes(billingCycle)) {
                     return json({ error: "Invalid billing cycle." }, 400);
                 }
 
-                if (
-                    status !== null &&
-                    ![
-                        "trial",
-                        "active",
-                        "paused",
-                        "canceled",
-                        "cancelled",
-                        "expired",
-                        "none"
-                    ].includes(status)
-                ) {
-                    return json(
-                        { error: "Invalid subscription status." },
-                        400
-                    );
+                if (status !== null && !["trial", "active", "paused", "canceled", "cancelled", "expired", "none"].includes(status)) {
+                    return json({ error: "Invalid subscription status." }, 400);
                 }
 
                 if (role !== null) {
@@ -320,21 +374,14 @@ Deno.serve(async (req) => {
                         .eq("id", userId);
 
                     if (error) {
-                        console.error("Update user role error:", error);
-                        return json(
-                            {
-                                error: "Unable to update user role.",
-                                details: error.message
-                            },
-                            500
-                        );
+                        return json({
+                            error: "Unable to update user role.",
+                            details: error.message
+                        }, 500);
                     }
                 }
 
-                const {
-                    data: existingSub,
-                    error: subLookupError
-                } = await sb
+                const { data: existingSub, error: subLookupError } = await sb
                     .from("subscriptions")
                     .select("*")
                     .eq("user_id", userId)
@@ -343,33 +390,23 @@ Deno.serve(async (req) => {
                     .maybeSingle();
 
                 if (subLookupError) {
-                    return json(
-                        {
-                            error: "Unable to load user subscription.",
-                            details: subLookupError.message
-                        },
-                        500
-                    );
+                    return json({
+                        error: "Unable to load user subscription.",
+                        details: subLookupError.message
+                    }, 500);
                 }
 
                 const subscriptionPatch: Record<string, any> = {
                     updated_at: new Date().toISOString()
                 };
 
-                if (planId !== null) {
-                    subscriptionPatch.plan_id = planId;
-                }
-
-                if (billingCycle !== null) {
-                    subscriptionPatch.billing_cycle = billingCycle;
-                }
-
+                if (planId !== null) subscriptionPatch.plan_id = planId;
+                if (billingCycle !== null) subscriptionPatch.billing_cycle = billingCycle;
                 if (status !== null) {
                     subscriptionPatch.status = status;
-                    subscriptionPatch.paused_at =
-                        status === "paused"
-                            ? new Date().toISOString()
-                            : null;
+                    subscriptionPatch.paused_at = status === "paused"
+                        ? new Date().toISOString()
+                        : null;
                 }
 
                 const hasSubscriptionChanges =
@@ -385,13 +422,10 @@ Deno.serve(async (req) => {
                             .eq("id", existingSub.id);
 
                         if (error) {
-                            return json(
-                                {
-                                    error: "Unable to update subscription.",
-                                    details: error.message
-                                },
-                                500
-                            );
+                            return json({
+                                error: "Unable to update subscription.",
+                                details: error.message
+                            }, 500);
                         }
                     } else {
                         const now = new Date();
@@ -412,20 +446,16 @@ Deno.serve(async (req) => {
                             });
 
                         if (error) {
-                            return json(
-                                {
-                                    error: "Unable to create subscription.",
-                                    details: error.message
-                                },
-                                500
-                            );
+                            return json({
+                                error: "Unable to create subscription.",
+                                details: error.message
+                            }, 500);
                         }
                     }
                 }
 
                 return json({
                     success: true,
-                    section: "users",
                     message: "User updated successfully."
                 });
             }
@@ -433,18 +463,8 @@ Deno.serve(async (req) => {
             if (action === "extend_subscription") {
                 const days = Number(body?.days);
 
-                if (
-                    !Number.isInteger(days) ||
-                    days < 1 ||
-                    days > 3650
-                ) {
-                    return json(
-                        {
-                            error:
-                                "Days must be an integer between 1 and 3650."
-                        },
-                        400
-                    );
+                if (!Number.isInteger(days) || days < 1 || days > 3650) {
+                    return json({ error: "Days must be an integer between 1 and 3650." }, 400);
                 }
 
                 const { data: sub, error } = await sb
@@ -456,13 +476,7 @@ Deno.serve(async (req) => {
                     .maybeSingle();
 
                 if (error) {
-                    return json(
-                        {
-                            error: "Unable to load subscription.",
-                            details: error.message
-                        },
-                        500
-                    );
+                    return json({ error: "Unable to load subscription.", details: error.message }, 500);
                 }
 
                 const now = new Date();
@@ -477,23 +491,13 @@ Deno.serve(async (req) => {
                         .from("subscriptions")
                         .update({
                             subscription_ends_at: base.toISOString(),
-                            status:
-                                sub.status === "paused"
-                                    ? "paused"
-                                    : "active",
+                            status: sub.status === "paused" ? "paused" : "active",
                             updated_at: new Date().toISOString()
                         })
                         .eq("id", sub.id);
 
                     if (updateError) {
-                        return json(
-                            {
-                                error:
-                                    "Unable to extend subscription.",
-                                details: updateError.message
-                            },
-                            500
-                        );
+                        return json({ error: "Unable to extend subscription.", details: updateError.message }, 500);
                     }
                 } else {
                     const { error: insertError } = await sb
@@ -510,32 +514,18 @@ Deno.serve(async (req) => {
                         });
 
                     if (insertError) {
-                        return json(
-                            {
-                                error: "Unable to create subscription.",
-                                details: insertError.message
-                            },
-                            500
-                        );
+                        return json({ error: "Unable to create subscription.", details: insertError.message }, 500);
                     }
                 }
 
                 return json({
                     success: true,
-                    section: "users",
-                    message:
-                        `Subscription extended by ${days} day(s).`
+                    message: `Subscription extended by ${days} day(s).`
                 });
             }
 
-            if (
-                action === "pause_subscription" ||
-                action === "resume_subscription"
-            ) {
-                const nextStatus =
-                    action === "pause_subscription"
-                        ? "paused"
-                        : "active";
+            if (action === "pause_subscription" || action === "resume_subscription") {
+                const nextStatus = action === "pause_subscription" ? "paused" : "active";
 
                 const { data: sub, error } = await sb
                     .from("subscriptions")
@@ -546,329 +536,682 @@ Deno.serve(async (req) => {
                     .maybeSingle();
 
                 if (error) {
-                    return json(
-                        {
-                            error: "Unable to load subscription.",
-                            details: error.message
-                        },
-                        500
-                    );
+                    return json({ error: "Unable to load subscription.", details: error.message }, 500);
                 }
 
                 if (!sub) {
-                    return json(
-                        {
-                            error:
-                                "No subscription exists for this user."
-                        },
-                        404
-                    );
+                    return json({ error: "No subscription exists for this user." }, 404);
                 }
 
                 const { error: updateError } = await sb
                     .from("subscriptions")
                     .update({
                         status: nextStatus,
-                        paused_at:
-                            nextStatus === "paused"
-                                ? new Date().toISOString()
-                                : null,
+                        paused_at: nextStatus === "paused" ? new Date().toISOString() : null,
                         updated_at: new Date().toISOString()
                     })
                     .eq("id", sub.id);
 
                 if (updateError) {
-                    return json(
-                        {
-                            error:
-                                "Unable to update subscription status.",
-                            details: updateError.message
-                        },
-                        500
-                    );
+                    return json({ error: "Unable to update subscription status.", details: updateError.message }, 500);
                 }
 
                 return json({
                     success: true,
-                    section: "users",
-                    message:
-                        `Subscription ${nextStatus === "paused" ? "paused" : "resumed"}.`
+                    message: `Subscription ${nextStatus === "paused" ? "paused" : "resumed"}.`
                 });
             }
 
-            return json(
-                {
-                    error: "Unsupported users action.",
-                    action
-                },
-                400
-            );
+            return json({ error: "Unsupported users action." }, 400);
         }
+
+
+
+
+
 
         /* -----------------------------------------------------
-           WEBSITES MANAGEMENT
-        ----------------------------------------------------- */
+   WEBSITES MANAGEMENT
+----------------------------------------------------- */
 
-        if (requestSection === "websites") {
-            const websiteId = String(body?.website_id || "").trim();
+if (section === "websites") {
 
-            if (!websiteId) {
-                return json(
-                    { error: "website_id is required." },
-                    400
-                );
-            }
+    const action =
+        String(
+            body?.action || ""
+        ).trim();
 
-            if (action === "update_website") {
-                const name = body?.name !== undefined
-                    ? String(body.name).trim()
-                    : null;
+    const websiteId =
+        String(
+            body?.website_id || ""
+        ).trim();
 
-                const urlValue = body?.url !== undefined
-                    ? String(body.url).trim()
-                    : null;
 
-                const status = body?.status !== undefined
-                    ? String(body.status).trim().toLowerCase()
-                    : null;
+    if (!websiteId) {
 
-                const crawlFrequency = body?.crawl_frequency !== undefined
-                    ? String(body.crawl_frequency).trim().toLowerCase()
-                    : null;
+        return json(
+            {
+                error:
+                    "website_id is required."
+            },
+            400
+        );
 
-                if (name !== null && !name) {
-                    return json(
-                        { error: "Website name cannot be empty." },
-                        400
-                    );
-                }
+    }
+}
 
-                if (
-                    status !== null &&
-                    ![
-                        "active",
-                        "inactive",
-                        "pending",
-                        "error"
-                    ].includes(status)
-                ) {
-                    return json(
-                        { error: "Invalid website status." },
-                        400
-                    );
-                }
+    /* =================================================
+       UPDATE WEBSITE
+    ================================================= */
 
-                if (
-                    crawlFrequency !== null &&
-                    ![
-                        "manual",
-                        "hourly",
-                        "daily",
-                        "weekly",
-                        "monthly"
-                    ].includes(crawlFrequency)
-                ) {
-                    return json(
-                        { error: "Invalid crawl frequency." },
-                        400
-                    );
-                }
+    if (
+        action ===
+        "update_website"
+    ) {
 
-                if (
-                    urlValue !== null &&
-                    urlValue &&
-                    !/^https?:\/\/.+/i.test(urlValue)
-                ) {
-                    return json(
-                        {
-                            error:
-                                "Website URL must start with http:// or https://."
-                        },
-                        400
-                    );
-                }
+        const name =
+            body?.name !== undefined
+                ? String(
+                    body.name
+                ).trim()
+                : null;
 
-                const patch: Record<string, any> = {
-                    updated_at: new Date().toISOString()
-                };
+        const urlValue =
+            body?.url !== undefined
+                ? String(
+                    body.url
+                ).trim()
+                : null;
 
-                if (name !== null) {
-                    patch.name = name.slice(0, 200);
-                }
+        const status =
+            body?.status !== undefined
+                ? String(
+                    body.status
+                ).trim()
+                    .toLowerCase()
+                : null;
 
-                if (urlValue !== null) {
-                    patch.url = urlValue.slice(0, 2000);
-                }
+        const crawlFrequency =
+            body?.crawl_frequency !== undefined
+                ? String(
+                    body.crawl_frequency
+                ).trim()
+                    .toLowerCase()
+                : null;
 
-                if (status !== null) {
-                    patch.status = status;
-                }
 
-                if (crawlFrequency !== null) {
-                    patch.crawl_frequency = crawlFrequency;
-                }
-
-                const { data, error } = await sb
-                    .from("websites")
-                    .update(patch)
-                    .eq("id", websiteId)
-                    .select("*")
-                    .maybeSingle();
-
-                if (error) {
-                    console.error("Website update error:", error);
-                    return json(
-                        {
-                            error: "Unable to update website.",
-                            details: error.message
-                        },
-                        500
-                    );
-                }
-
-                if (!data) {
-                    return json(
-                        { error: "Website not found." },
-                        404
-                    );
-                }
-
-                return json({
-                    success: true,
-                    section: "websites",
-                    website: data,
-                    message: "Website updated successfully."
-                });
-            }
-
-            if (
-                action === "archive_website" ||
-                action === "restore_website"
-            ) {
-                const nextStatus =
-                    action === "archive_website"
-                        ? "inactive"
-                        : "active";
-
-                const { data: existing, error: lookupError } = await sb
-                    .from("websites")
-                    .select("id,name,url,user_id,status")
-                    .eq("id", websiteId)
-                    .maybeSingle();
-
-                if (lookupError) {
-                    return json(
-                        {
-                            error: "Unable to find website.",
-                            details: lookupError.message
-                        },
-                        500
-                    );
-                }
-
-                if (!existing) {
-                    return json(
-                        { error: "Website not found." },
-                        404
-                    );
-                }
-
-                const { data, error } = await sb
-                    .from("websites")
-                    .update({
-                        status: nextStatus,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq("id", websiteId)
-                    .select("*")
-                    .single();
-
-                if (error) {
-                    console.error("Website status update error:", error);
-                    return json(
-                        {
-                            error:
-                                action === "archive_website"
-                                    ? "Unable to archive website."
-                                    : "Unable to restore website.",
-                            details: error.message
-                        },
-                        500
-                    );
-                }
-
-                return json({
-                    success: true,
-                    section: "websites",
-                    website: data,
-                    message:
-                        action === "archive_website"
-                            ? "Website archived successfully."
-                            : "Website restored successfully."
-                });
-            }
-
-            if (action === "delete_website") {
-                const { data: existing, error: lookupError } = await sb
-                    .from("websites")
-                    .select("id,name,user_id")
-                    .eq("id", websiteId)
-                    .maybeSingle();
-
-                if (lookupError) {
-                    return json(
-                        {
-                            error: "Unable to find website.",
-                            details: lookupError.message
-                        },
-                        500
-                    );
-                }
-
-                if (!existing) {
-                    return json(
-                        { error: "Website not found." },
-                        404
-                    );
-                }
-
-                const { error: deleteError } = await sb
-                    .from("websites")
-                    .delete()
-                    .eq("id", websiteId);
-
-                if (deleteError) {
-                    console.error("Website delete error:", deleteError);
-                    return json(
-                        {
-                            error: "Unable to delete website.",
-                            details: deleteError.message
-                        },
-                        500
-                    );
-                }
-
-                return json({
-                    success: true,
-                    section: "websites",
-                    message: "Website deleted successfully."
-                });
-            }
+        if (
+            name !== null &&
+            !name
+        ) {
 
             return json(
                 {
-                    error: "Unsupported websites action.",
-                    action
+                    error:
+                        "Website name cannot be empty."
                 },
                 400
             );
+
         }
+
+
+        if (
+            status !== null &&
+            ![
+                "active",
+                "inactive",
+                "pending",
+                "error"
+            ].includes(
+                status
+            )
+        ) {
+
+            return json(
+                {
+                    error:
+                        "Invalid website status."
+                },
+                400
+            );
+
+        }
+
+
+        if (
+            crawlFrequency !== null &&
+            ![
+                "manual",
+                "hourly",
+                "daily",
+                "weekly",
+                "monthly"
+            ].includes(
+                crawlFrequency
+            )
+        ) {
+
+            return json(
+                {
+                    error:
+                        "Invalid crawl frequency."
+                },
+                400
+            );
+
+        }
+
+
+        if (
+            urlValue !== null &&
+            urlValue &&
+            !/^https?:\/\/.+/i.test(
+                urlValue
+            )
+        ) {
+
+            return json(
+                {
+                    error:
+                        "Website URL must start with http:// or https://."
+                },
+                400
+            );
+
+        }
+
+
+        const patch:
+            Record<string, any> = {
+                updated_at:
+                    new Date()
+                        .toISOString()
+            };
+
+
+        if (
+            name !== null
+        ) {
+
+            patch.name =
+                name.slice(
+                    0,
+                    200
+                );
+
+        }
+
+
+        if (
+            urlValue !== null
+        ) {
+
+            patch.url =
+                urlValue.slice(
+                    0,
+                    2000
+                );
+
+        }
+
+
+        if (
+            status !== null
+        ) {
+
+            patch.status =
+                status;
+
+        }
+
+
+        if (
+            crawlFrequency !== null
+        ) {
+
+            patch.crawl_frequency =
+                crawlFrequency;
+
+        }
+
+
+        const {
+            data,
+            error
+        } = await sb
+            .from("websites")
+            .update(
+                patch
+            )
+            .eq(
+                "id",
+                websiteId
+            )
+            .select("*")
+            .maybeSingle();
+
+
+        if (error) {
+
+            console.error(
+                "Website update error:",
+                error
+            );
+
+            return json(
+                {
+                    error:
+                        "Unable to update website.",
+                    details:
+                        error.message
+                },
+                500
+            );
+
+        }
+
+
+        if (!data) {
+
+            return json(
+                {
+                    error:
+                        "Website not found."
+                },
+                404
+            );
+
+        }
+
+
+        return json(
+            {
+                success:
+                    true,
+
+                section:
+                    "websites",
+
+                website:
+                    data,
+
+                message:
+                    "Website updated successfully."
+            }
+        );
+
+    }
+
+    /* =================================================
+   DELETE WEBSITE
+================================================= */
+
+if (
+    action ===
+    "delete_website"
+) {
+
+    const {
+        data: existing,
+        error: lookupError
+    } = await sb
+        .from("websites")
+        .select(
+            "id,name,url,user_id,status"
+        )
+        .eq(
+            "id",
+            websiteId
+        )
+        .maybeSingle();
+
+
+    if (lookupError) {
+
+        console.error(
+            "Website lookup error:",
+            lookupError
+        );
+
+        return json(
+            {
+                error:
+                    "Unable to find website.",
+                details:
+                    lookupError.message
+            },
+            500
+        );
+    }
+
+
+    if (!existing) {
+
+        return json(
+            {
+                error:
+                    "Website not found."
+            },
+            404
+        );
+    }
+
+
+    /*
+     * Delete the website.
+     *
+     * This is intentionally a hard delete because
+     * the Admin UI uses a Delete button and confirms
+     * that the action cannot be undone.
+     */
+
+    const {
+        error: deleteError
+    } = await sb
+        .from("websites")
+        .delete()
+        .eq(
+            "id",
+            websiteId
+        );
+
+
+    if (deleteError) {
+
+        console.error(
+            "Website delete error:",
+            deleteError
+        );
+
+        return json(
+            {
+                error:
+                    "Unable to delete website.",
+                details:
+                    deleteError.message
+            },
+            500
+        );
+    }
+
+
+    console.log(
+        "Website deleted:",
+        {
+            website_id:
+                websiteId,
+
+            name:
+                existing.name,
+
+            user_id:
+                existing.user_id
+        }
+    );
+
+
+    return json(
+        {
+            success:
+                true,
+
+            section:
+                "websites",
+
+            website_id:
+                websiteId,
+
+            message:
+                "Website deleted successfully."
+        }
+    );
+}
+
+    
+    /* =================================================
+   ARCHIVE WEBSITE
+================================================= */
+
+if (
+    action ===
+    "archive_website"
+) {
+
+    const {
+        data: existing,
+        error: lookupError
+    } = await sb
+        .from("websites")
+        .select(
+            "id,name,url,user_id,status"
+        )
+        .eq(
+            "id",
+            websiteId
+        )
+        .maybeSingle();
+
+
+    if (lookupError) {
+
+        return json(
+            {
+                error:
+                    "Unable to find website.",
+                details:
+                    lookupError.message
+            },
+            500
+        );
+
+    }
+
+
+    if (!existing) {
+
+        return json(
+            {
+                error:
+                    "Website not found."
+            },
+            404
+        );
+
+    }
+
+
+    const {
+        data,
+        error
+    } = await sb
+        .from("websites")
+        .update({
+            status:
+                "inactive",
+            updated_at:
+                new Date()
+                    .toISOString()
+        })
+        .eq(
+            "id",
+            websiteId
+        )
+        .select("*")
+        .single();
+
+
+    if (error) {
+
+        console.error(
+            "Website archive error:",
+            error
+        );
+
+        return json(
+            {
+                error:
+                    "Unable to archive website.",
+                details:
+                    error.message
+            },
+            500
+        );
+
+    }
+
+
+    return json(
+        {
+            success:
+                true,
+
+            section:
+                "websites",
+
+            website:
+                data,
+
+            message:
+                "Website archived successfully."
+        }
+    );
+
+}
+
+
+
+
+/* =================================================
+   RESTORE WEBSITE
+================================================= */
+
+if (
+    action ===
+    "restore_website"
+) {
+
+    const {
+        data: existing,
+        error: lookupError
+    } = await sb
+        .from("websites")
+        .select(
+            "id,name,url,user_id,status"
+        )
+        .eq(
+            "id",
+            websiteId
+        )
+        .maybeSingle();
+
+
+    if (lookupError) {
+
+        return json(
+            {
+                error:
+                    "Unable to find website.",
+                details:
+                    lookupError.message
+            },
+            500
+        );
+
+    }
+
+
+    if (!existing) {
+
+        return json(
+            {
+                error:
+                    "Website not found."
+            },
+            404
+        );
+
+    }
+
+
+    const {
+        data,
+        error
+    } = await sb
+        .from("websites")
+        .update({
+            status:
+                "active",
+            updated_at:
+                new Date()
+                    .toISOString()
+        })
+        .eq(
+            "id",
+            websiteId
+        )
+        .select("*")
+        .single();
+
+
+    if (error) {
+
+        console.error(
+            "Website restore error:",
+            error
+        );
+
+        return json(
+            {
+                error:
+                    "Unable to restore website.",
+                details:
+                    error.message
+            },
+            500
+        );
+
+    }
+
+
+     return json(
+        {
+            success:
+                true,
+            section:
+                "websites",
+            website:
+                data,
+            message:
+                "Website restored successfully."
+        }
+    );
+
+    }   // closes restore_website
+
+
+          
+
+
+
+
+
+
 
         /* -----------------------------------------------------
            SETTINGS WRITE
         ----------------------------------------------------- */
 
-        if (requestSection === "settings") {
+        if (section !== "settings") {
+            return json(
+                {
+    error:
+        "POST is only supported for users, websites, or settings."
+},
+                405
+            );
+        }
+
         if (body?.action !== "update_branding") {
             return json(
                 {
@@ -1123,16 +1466,6 @@ Deno.serve(async (req) => {
                 message: "Branding settings saved successfully.",
                 setting: saved
             }
-        );
-    }
-
-        return json(
-            {
-                error: "Unsupported admin POST section.",
-                section: requestSection,
-                action
-            },
-            400
         );
     }
 
@@ -1928,52 +2261,46 @@ Deno.serve(async (req) => {
     }
 
 
-    /* =====================================================
-       WEBSITES
-    ===================================================== */
+   /* -----------------------------------------------------
+   WEBSITE ACTION PARAMETERS
+----------------------------------------------------- */
 
-    if (
-        section ===
-        "websites"
-    ) {
+const action =
+    String(
+        body?.action || ""
+    ).trim();
 
-        const {
-            data,
-            error
-        } = await sb
-            .from("websites")
-            .select("*")
-            .order(
-                "created_at",
-                {
-                    ascending: false
-                }
-            );
+const websiteId =
+    String(
+        body?.website_id || ""
+    ).trim();
 
 
-        if (error) {
+/*
+ * Only website-management actions require
+ * a website_id.
+ */
 
-            return json(
-                {
-                    error:
-                        "Unable to load websites.",
-                    details:
-                        error.message
-                },
-                500
-            );
-        }
+const websiteActions = [
+    "update_website",
+    "delete_website",
+    "archive_website",
+    "restore_website"
+];
 
 
-        return json(
-            {
-                success: true,
-                section,
-                websites:
-                    data || []
-            }
-        );
-    }
+if (
+    websiteActions.includes(action) &&
+    !websiteId
+) {
+    return json(
+        {
+            error:
+                "website_id is required."
+        },
+        400
+    );
+}
 
 
     /* =====================================================
@@ -2170,43 +2497,6 @@ Deno.serve(async (req) => {
 
 
     /* =====================================================
-       PLANS
-    ===================================================== */
-
-    if (section === "plans") {
-
-        const {
-            data: plans,
-            error: plansError
-        } = await sb
-            .from("plans")
-            .select("*")
-            .order("name", { ascending: true });
-
-        if (plansError) {
-            console.error(
-                "Plans load error:",
-                plansError
-            );
-
-            return json(
-                {
-                    error: "Unable to load plans.",
-                    details: plansError.message
-                },
-                500
-            );
-        }
-
-        return json({
-            success: true,
-            section: "plans",
-            plans: plans || []
-        });
-    }
-
-
-    /* =====================================================
        UNKNOWN
     ===================================================== */
 
@@ -2219,20 +2509,4 @@ Deno.serve(async (req) => {
         400
     );
 
-
-
-    } catch (error) {
-        console.error("Unhandled admin function error:", error);
-
-        return json(
-            {
-                error: "Internal admin function error.",
-                details:
-                    error instanceof Error
-                        ? error.message
-                        : String(error)
-            },
-            500
-        );
-    }
 });
