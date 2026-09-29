@@ -117,8 +117,165 @@ class="app-brand-logo"
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../app-config.js"></script>
 <script src="../app.js"></script>
-<script src="../auth-ui.js?v=20260929-2"></script>
+<script src="../auth-ui.js"></script>
 
+<script>
+(function () {
+    "use strict";
+
+    function ensureForgotPassword() {
+
+        const passwordInput =
+            document.getElementById("password");
+
+        if (!passwordInput) {
+            return;
+        }
+
+        /*
+         * auth-ui.js already creates the real
+         * password-reset panel. We only make sure
+         * the visible trigger exists.
+         */
+        let forgotButton =
+            document.getElementById("forgotPasswordBtn");
+
+        if (!forgotButton) {
+
+            forgotButton =
+                document.createElement("button");
+
+            forgotButton.type = "button";
+            forgotButton.id = "forgotPasswordBtn";
+
+            forgotButton.textContent =
+                "Forgot password?";
+
+            forgotButton.style.cssText = `
+                display:block !important;
+                width:auto !important;
+                margin:6px 0 12px auto !important;
+                padding:4px 0 !important;
+                border:0 !important;
+                background:transparent !important;
+                color:#6d28d9 !important;
+                font-size:13px !important;
+                font-weight:800 !important;
+                line-height:1.4 !important;
+                cursor:pointer !important;
+                text-decoration:none !important;
+                box-shadow:none !important;
+            `;
+
+            passwordInput.insertAdjacentElement(
+                "afterend",
+                forgotButton
+            );
+        }
+
+        /*
+         * Do not bind the same button more than once.
+         */
+        if (
+            forgotButton.dataset.bound === "1"
+        ) {
+            return;
+        }
+
+        forgotButton.dataset.bound = "1";
+
+        forgotButton.addEventListener(
+            "click",
+            function () {
+
+                const loginPanel =
+                    document.getElementById(
+                        "loginFormPanel"
+                    );
+
+                const signupPanel =
+                    document.getElementById(
+                        "signupPanel"
+                    );
+
+                const forgotPanel =
+                    document.getElementById(
+                        "forgotPasswordPanel"
+                    );
+
+                const recoveryPanel =
+                    document.getElementById(
+                        "recoveryPanel"
+                    );
+
+                if (loginPanel) {
+                    loginPanel.classList.add("hidden");
+                }
+
+                if (signupPanel) {
+                    signupPanel.classList.add("hidden");
+                }
+
+                if (recoveryPanel) {
+                    recoveryPanel.classList.add("hidden");
+                }
+
+                if (forgotPanel) {
+                    forgotPanel.classList.remove("hidden");
+
+                    const resetEmail =
+                        document.getElementById(
+                            "resetEmail"
+                        );
+
+                    const email =
+                        document.getElementById(
+                            "email"
+                        );
+
+                    if (
+                        resetEmail &&
+                        email &&
+                        email.value
+                    ) {
+                        resetEmail.value =
+                            email.value.trim();
+                    }
+
+                    if (resetEmail) {
+                        resetEmail.focus();
+                    }
+                }
+            }
+        );
+    }
+
+    /*
+     * First attempt.
+     */
+    ensureForgotPassword();
+
+    /*
+     * auth-ui.js may finish its DOM work shortly
+     * after the page becomes ready, so retry briefly.
+     */
+    let attempts = 0;
+
+    const timer =
+        setInterval(function () {
+
+            attempts++;
+
+            ensureForgotPassword();
+
+            if (attempts >= 20) {
+                clearInterval(timer);
+            }
+
+        }, 250);
+
+})();
+</script>
 
 </body>
 </html>
