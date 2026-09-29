@@ -113,3 +113,79 @@
         font-size:21px;
     }
 }
+
+
+.auth-text-button{
+    display:block;
+    width:auto!important;
+    margin:4px 0 12px auto!important;
+    padding:4px 0!important;
+    border:0!important;
+    background:transparent!important;
+    color:#6d28d9!important;
+    font-size:12px;
+    font-weight:800;
+    text-decoration:none;
+    box-shadow:none!important;
+}
+
+.auth-text-button:hover{
+    text-decoration:underline;
+}
+
+.forgot-panel{
+    margin-top:12px;
+    padding-top:20px;
+    border-top:1px solid #eeeaf4;
+}
+
+.forgot-panel h2{
+    margin:0 0 6px;
+    font-size:24px;
+}
+
+.forgot-panel p{
+    margin:0 0 18px;
+    color:#71768a;
+    line-height:1.55;
+}
+
+.forgot-panel label{
+    display:block;
+    margin:12px 0 6px;
+    font-size:13px;
+    font-weight:800;
+    color:#3d3948;
+}
+
+.forgot-panel input{
+    margin:0 0 2px!important;
+}
+
+.secondary-action{
+    margin-top:6px!important;
+    background:#fff!important;
+    color:#5f6375!important;
+    border:1px solid #ddd6fe!important;
+}
+
+.auth-message{
+    min-height:20px;
+    margin:12px 0 0;
+    font-size:13px;
+    line-height:1.5;
+}
+
+.auth-message.ok{
+    color:#047857;
+}
+
+.auth-message.error{
+    color:#b91c1c;
+}
+
+@media(max-width:550px){
+    .forgot-panel h2{
+        font-size:21px;
+    }
+}
