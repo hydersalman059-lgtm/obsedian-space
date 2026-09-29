@@ -157,6 +157,60 @@ Deno.serve(async (req) => {
 
 
     /* =====================================================
+       AUDIT LOG HELPER
+    ===================================================== */
+
+    async function writeAuditLog({
+        action,
+        entityType = null,
+        entityId = null,
+        metadata = {}
+    }: {
+        action: string;
+        entityType?: string | null;
+        entityId?: string | null;
+        metadata?: Record<string, unknown>;
+    }) {
+        try {
+            const { error: auditError } = await sb
+                .from("audit_logs")
+                .insert({
+                    actor_user_id: user.id,
+                    action,
+                    entity_type: entityType,
+                    entity_id: entityId,
+                    metadata
+                });
+
+            if (auditError) {
+                console.error(
+                    "[AUDIT] Failed to write audit log:",
+                    auditError
+                );
+                return false;
+            }
+
+            console.log(
+                "[AUDIT] Audit log created:",
+                {
+                    action,
+                    entityType,
+                    entityId
+                }
+            );
+
+            return true;
+        } catch (auditException) {
+            console.error(
+                "[AUDIT] Unexpected audit error:",
+                auditException
+            );
+            return false;
+        }
+    }
+
+
+    /* =====================================================
        PARAMETERS
     ===================================================== */
 
@@ -194,6 +248,29 @@ Deno.serve(async (req) => {
                 400
             );
         }
+
+        /*
+         * POST actions are intentionally independent of the
+         * section query parameter. The adminAction() helper
+         * sends { action, ...payload } directly.
+         */
+        const action = String(body?.action || "").trim();
+        const websiteId = String(body?.website_id || "").trim();
+
+        const websiteActions = [
+            "update_website",
+            "delete_website",
+            "archive_website",
+            "restore_website"
+        ];
+
+        if (websiteActions.includes(action) && !websiteId) {
+            return json(
+                { error: "website_id is required." },
+                400
+            );
+        }
+
 
         /* -----------------------------------------------------
            APPROVAL MANAGEMENT
@@ -280,7 +357,7 @@ Deno.serve(async (req) => {
                 const { error: auditError } = await sb
                     .from("audit_logs")
                     .insert({
-                        user_id: user.id,
+                        actor_user_id: user.id,
                         action: approved ? "approve_approval" : "reject_approval",
                         entity_type: "approval",
                         entity_id: approval.id,
@@ -454,6 +531,19 @@ Deno.serve(async (req) => {
                     }
                 }
 
+                await writeAuditLog({
+                    action: "user_updated",
+                    entityType: "user",
+                    entityId: userId,
+                    metadata: {
+                        user_id: userId,
+                        role,
+                        plan_id: planId,
+                        billing_cycle: billingCycle,
+                        status
+                    }
+                });
+
                 return json({
                     success: true,
                     message: "User updated successfully."
@@ -518,6 +608,17 @@ Deno.serve(async (req) => {
                     }
                 }
 
+                await writeAuditLog({
+                    action: "subscription_extended",
+                    entityType: "subscription",
+                    entityId: sub?.id ? String(sub.id) : userId,
+                    metadata: {
+                        user_id: userId,
+                        subscription_id: sub?.id ?? null,
+                        days
+                    }
+                });
+
                 return json({
                     success: true,
                     message: `Subscription extended by ${days} day(s).`
@@ -556,6 +657,19 @@ Deno.serve(async (req) => {
                     return json({ error: "Unable to update subscription status.", details: updateError.message }, 500);
                 }
 
+                await writeAuditLog({
+                    action: nextStatus === "paused"
+                        ? "subscription_paused"
+                        : "subscription_resumed",
+                    entityType: "subscription",
+                    entityId: String(sub.id),
+                    metadata: {
+                        user_id: userId,
+                        subscription_id: sub.id,
+                        status: nextStatus
+                    }
+                });
+
                 return json({
                     success: true,
                     message: `Subscription ${nextStatus === "paused" ? "paused" : "resumed"}.`
@@ -570,46 +684,10 @@ Deno.serve(async (req) => {
 
 
 
-   /* -----------------------------------------------------
-   WEBSITE ACTION PARAMETERS
------------------------------------------------------ */
-
-const action =
-    String(
-        body?.action || ""
-    ).trim();
-
-const websiteId =
-    String(
-        body?.website_id || ""
-    ).trim();
-
-
-/*
- * Only website-management actions require
- * a website_id.
- */
-
-const websiteActions = [
-    "update_website",
-    "delete_website",
-    "archive_website",
-    "restore_website"
-];
-
-
-if (
-    websiteActions.includes(action) &&
-    !websiteId
-) {
-    return json(
-        {
-            error:
-                "website_id is required."
-        },
-        400
-    );
-}
+        /* -----------------------------------------------------
+           WEBSITES MANAGEMENT
+           Actions are handled without requiring section=websites.
+        ----------------------------------------------------- */
 
     /* =================================================
        UPDATE WEBSITE
@@ -836,6 +914,19 @@ if (
         }
 
 
+        await writeAuditLog({
+            action: "website_updated",
+            entityType: "website",
+            entityId: websiteId,
+            metadata: {
+                website_id: websiteId,
+                name: data?.name ?? null,
+                url: data?.url ?? null,
+                status: data?.status ?? null,
+                crawl_frequency: data?.crawl_frequency ?? null
+            }
+        });
+
         return json(
             {
                 success:
@@ -962,6 +1053,19 @@ if (
     );
 
 
+    await writeAuditLog({
+        action: "website_deleted",
+        entityType: "website",
+        entityId: websiteId,
+        metadata: {
+            website_id: websiteId,
+            name: existing.name,
+            url: existing.url,
+            user_id: existing.user_id,
+            status: existing.status
+        }
+    });
+
     return json(
         {
             success:
@@ -1071,6 +1175,19 @@ if (
 
     }
 
+
+    await writeAuditLog({
+        action: "website_archived",
+        entityType: "website",
+        entityId: websiteId,
+        metadata: {
+            website_id: websiteId,
+            name: data?.name ?? existing.name,
+            url: data?.url ?? existing.url,
+            previous_status: existing.status,
+            new_status: "inactive"
+        }
+    });
 
     return json(
         {
@@ -1184,6 +1301,19 @@ if (
 
     }
 
+
+     await writeAuditLog({
+        action: "website_restored",
+        entityType: "website",
+        entityId: websiteId,
+        metadata: {
+            website_id: websiteId,
+            name: data?.name ?? existing.name,
+            url: data?.url ?? existing.url,
+            previous_status: existing.status,
+            new_status: "active"
+        }
+    });
 
      return json(
         {
@@ -1469,6 +1599,16 @@ if (
                 500
             );
         }
+
+        await writeAuditLog({
+            action: "branding_updated",
+            entityType: "settings",
+            entityId: "branding",
+            metadata: {
+                setting: "branding",
+                branding: saved?.value ?? branding
+            }
+        });
 
         return json(
             {

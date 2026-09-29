@@ -18,7 +18,7 @@ class="app-brand-logo"
 >
 <span class="app-brand-name">Obsedian.Space</span>
 </a>
-<button id="logout">Logout</button>
+<button id="logout" style="display:none;">Logout</button>
 </header>
 <br>
 <main>
@@ -124,158 +124,282 @@ class="app-brand-logo"
     "use strict";
 
     function ensureForgotPassword() {
-
         const passwordInput =
             document.getElementById("password");
 
-        if (!passwordInput) {
+        const loginSection =
+            document.getElementById("login");
+
+        if (!passwordInput || !loginSection) {
             return;
         }
 
         /*
-         * auth-ui.js already creates the real
-         * password-reset panel. We only make sure
-         * the visible trigger exists.
+         * If auth-ui.js already created the button,
+         * do nothing.
          */
-        let forgotButton =
+        let forgot =
             document.getElementById("forgotPasswordBtn");
 
-        if (!forgotButton) {
-
-            forgotButton =
-                document.createElement("button");
-
-            forgotButton.type = "button";
-            forgotButton.id = "forgotPasswordBtn";
-
-            forgotButton.textContent =
-                "Forgot password?";
-
-            forgotButton.style.cssText = `
-                display:block !important;
-                width:auto !important;
-                margin:6px 0 12px auto !important;
-                padding:4px 0 !important;
-                border:0 !important;
-                background:transparent !important;
-                color:#6d28d9 !important;
-                font-size:13px !important;
-                font-weight:800 !important;
-                line-height:1.4 !important;
-                cursor:pointer !important;
-                text-decoration:none !important;
-                box-shadow:none !important;
-            `;
-
-            passwordInput.insertAdjacentElement(
-                "afterend",
-                forgotButton
-            );
-        }
-
-        /*
-         * Do not bind the same button more than once.
-         */
-        if (
-            forgotButton.dataset.bound === "1"
-        ) {
+        if (forgot) {
             return;
         }
 
-        forgotButton.dataset.bound = "1";
+        /*
+         * Create the fallback button.
+         */
+        forgot =
+            document.createElement("button");
 
-        forgotButton.addEventListener(
+        forgot.type = "button";
+        forgot.id = "forgotPasswordBtn";
+        forgot.textContent = "Forgot password?";
+
+        forgot.style.display = "block";
+        forgot.style.marginTop = "10px";
+        forgot.style.background = "transparent";
+        forgot.style.border = "0";
+        forgot.style.padding = "6px 0";
+        forgot.style.cursor = "pointer";
+        forgot.style.textDecoration = "underline";
+
+        /*
+         * Insert directly after the password field.
+         */
+        passwordInput.insertAdjacentElement(
+            "afterend",
+            forgot
+        );
+
+        /*
+         * Standalone fallback reset action.
+         *
+         * This does NOT create another reset panel.
+         * It only sends the Supabase recovery email.
+         */
+        forgot.addEventListener(
             "click",
-            function () {
+            async function () {
+                const emailInput =
+                    document.getElementById("email");
 
-                const loginPanel =
-                    document.getElementById(
-                        "loginFormPanel"
-                    );
+                const msg =
+                    document.getElementById("msg");
 
-                const signupPanel =
-                    document.getElementById(
-                        "signupPanel"
-                    );
+                const email =
+                    emailInput?.value?.trim() || "";
 
-                const forgotPanel =
-                    document.getElementById(
-                        "forgotPasswordPanel"
-                    );
+                if (!email) {
+                    if (msg) {
+                        msg.textContent =
+                            "Please enter your email first.";
+                    }
 
-                const recoveryPanel =
-                    document.getElementById(
-                        "recoveryPanel"
-                    );
-
-                if (loginPanel) {
-                    loginPanel.classList.add("hidden");
+                    emailInput?.focus();
+                    return;
                 }
 
-                if (signupPanel) {
-                    signupPanel.classList.add("hidden");
+                forgot.disabled = true;
+
+                if (msg) {
+                    msg.textContent =
+                        "Sending password reset email...";
                 }
 
-                if (recoveryPanel) {
-                    recoveryPanel.classList.add("hidden");
-                }
-
-                if (forgotPanel) {
-                    forgotPanel.classList.remove("hidden");
-
-                    const resetEmail =
-                        document.getElementById(
-                            "resetEmail"
-                        );
-
-                    const email =
-                        document.getElementById(
-                            "email"
-                        );
+                try {
+                    const C =
+                        window.OBSEDIAN_CONFIG || {};
 
                     if (
-                        resetEmail &&
-                        email &&
-                        email.value
+                        !window.supabase ||
+                        !C.SUPABASE_URL ||
+                        !C.SUPABASE_PUBLISHABLE_KEY
                     ) {
-                        resetEmail.value =
-                            email.value.trim();
+                        throw new Error(
+                            "Supabase configuration is missing."
+                        );
                     }
 
-                    if (resetEmail) {
-                        resetEmail.focus();
+                    const client =
+                        window.supabase.createClient(
+                            C.SUPABASE_URL,
+                            C.SUPABASE_PUBLISHABLE_KEY,
+                            {
+                                auth: {
+                                    persistSession: true,
+                                    autoRefreshToken: true,
+                                    detectSessionInUrl: true
+                                }
+                            }
+                        );
+
+                    const {
+                        error
+                    } =
+                        await client.auth
+                            .resetPasswordForEmail(
+                                email,
+                                {
+                                    redirectTo:
+                                        window.location.origin +
+                                        "/app/"
+                                }
+                            );
+
+                    if (error) {
+                        throw error;
                     }
+
+                    if (msg) {
+                        msg.textContent =
+                            "Password reset email sent. Please check your inbox.";
+                    }
+
+                } catch (error) {
+                    console.error(
+                        "Forgot password error:",
+                        error
+                    );
+
+                    if (msg) {
+                        msg.textContent =
+                            error?.message ||
+                            "Unable to send password reset email.";
+                    }
+
+                } finally {
+                    forgot.disabled = false;
                 }
             }
         );
     }
 
     /*
-     * First attempt.
+     * Run after auth-ui.js.
      */
-    ensureForgotPassword();
+    if (
+        document.readyState === "loading"
+    ) {
+        document.addEventListener(
+            "DOMContentLoaded",
+            ensureForgotPassword,
+            { once: true }
+        );
+    } else {
+        ensureForgotPassword();
+    }
 
     /*
-     * auth-ui.js may finish its DOM work shortly
-     * after the page becomes ready, so retry briefly.
+     * Small delayed retry in case auth-ui.js
+     * finishes DOM work asynchronously.
      */
-    let attempts = 0;
-
-    const timer =
-        setInterval(function () {
-
-            attempts++;
-
-            ensureForgotPassword();
-
-            if (attempts >= 20) {
-                clearInterval(timer);
-            }
-
-        }, 250);
+    setTimeout(
+        ensureForgotPassword,
+        150
+    );
 
 })();
 </script>
+
+<!-- =========================================================
+     LOGOUT VISIBILITY
+     ========================================================= -->
+
+<script>
+(function () {
+    "use strict";
+
+    const logoutButton =
+        document.getElementById("logout");
+
+    if (!logoutButton) {
+        return;
+    }
+
+    /*
+     * Never expose Logout before we know
+     * whether a user session exists.
+     */
+    logoutButton.style.display = "none";
+
+    const C =
+        window.OBSEDIAN_CONFIG || {};
+
+    if (
+        !window.supabase ||
+        !C.SUPABASE_URL ||
+        !C.SUPABASE_PUBLISHABLE_KEY
+    ) {
+        console.error(
+            "[AUTH] Missing Supabase configuration."
+        );
+
+        return;
+    }
+
+    const client =
+        window.supabase.createClient(
+            C.SUPABASE_URL,
+            C.SUPABASE_PUBLISHABLE_KEY,
+            {
+                auth: {
+                    persistSession: true,
+                    autoRefreshToken: true,
+                    detectSessionInUrl: true
+                }
+            }
+        );
+
+    function updateLogoutVisibility(
+        currentSession
+    ) {
+        logoutButton.style.display =
+            currentSession ? "" : "none";
+    }
+
+    /*
+     * Check the existing session immediately.
+     */
+    client.auth.getSession()
+        .then(function (result) {
+            const session =
+                result?.data?.session || null;
+
+            updateLogoutVisibility(
+                session
+            );
+        })
+        .catch(function (error) {
+            console.error(
+                "[AUTH] Session check failed:",
+                error
+            );
+
+            updateLogoutVisibility(
+                null
+            );
+        });
+
+    /*
+     * Keep Logout synchronized with:
+     * - sign in
+     * - magic link
+     * - GitHub OAuth
+     * - sign out
+     */
+    client.auth.onAuthStateChange(
+        function (
+            event,
+            currentSession
+        ) {
+            updateLogoutVisibility(
+                currentSession
+            );
+        }
+    );
+})();
+</script>
+
 
 </body>
 </html>
