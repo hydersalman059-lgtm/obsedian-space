@@ -1,0 +1,7 @@
+project_id = "ssfntnqcqvpexvnqvkus"
+
+[functions.public-branding]
+verify_jwt = false
+
+[functions.razorpay-webhook]
+verify_jwt = false

@@ -51,6 +51,9 @@ Deno.serve(async (req) => {
             );
         }
 
+        /* This is the dedicated LIVE webhook secret from Razorpay Settings > Webhooks.
+         * It is NOT the API Key Secret used by Checkout/order creation.
+         */
         const secret =
             Deno.env.get(
                 "RAZORPAY_WEBHOOK_SECRET"
@@ -185,9 +188,29 @@ Deno.serve(async (req) => {
                     orderId
                 );
 
+                /* Retry delivery rather than acknowledge a paid order that is not recorded. */
                 return json({
-                    received: true
-                });
+                    error: "Subscription not found for Razorpay order."
+                }, 500);
+            }
+
+            /* Never activate a payment whose amount/currency differs from the saved order. */
+            const expectedAmountPaise = Math.round(
+                Number(subscription.payment_amount || 0) * 100
+            );
+            const actualAmountPaise = Number(payment.amount || 0);
+            const expectedCurrency = String(subscription.currency || "INR").toUpperCase();
+            const actualCurrency = String(payment.currency || "INR").toUpperCase();
+
+            if (
+                !expectedAmountPaise ||
+                actualAmountPaise !== expectedAmountPaise ||
+                actualCurrency !== expectedCurrency
+            ) {
+                console.error("Razorpay amount/currency mismatch for order:", orderId);
+                return json({
+                    error: "Payment amount or currency does not match the saved order."
+                }, 400);
             }
 
             /*
@@ -293,8 +316,6 @@ Deno.serve(async (req) => {
                         last_payment_at:
                             now.toISOString(),
 
-                        razorpay_signature:
-                            signature
 
                     })
                     .eq(
@@ -315,6 +336,26 @@ Deno.serve(async (req) => {
                     },
                     500
                 );
+            }
+
+            /*
+             * This payment now owns the user's current paid term.
+             * Expire older active/trial rows after carrying forward any
+             * still-valid paid end date into this new subscription row.
+             */
+            const { error: supersededError } = await supabase
+                .from("subscriptions")
+                .update({
+                    status: "expired",
+                    updated_at: now.toISOString()
+                })
+                .eq("user_id", subscription.user_id)
+                .neq("id", subscription.id)
+                .in("status", ["active", "trial"]);
+
+            if (supersededError) {
+                /* Payment activation is already recorded; log without forcing repeated renewal. */
+                console.error("Could not expire older subscription rows:", supersededError);
             }
 
             /*
