@@ -8,6 +8,12 @@
             return authClient;
         }
 
+        // Share the same client with app.js and the logout-visibility helper.
+        if (window.__OBSEDIAN_SUPABASE_CLIENT) {
+            authClient = window.__OBSEDIAN_SUPABASE_CLIENT;
+            return authClient;
+        }
+
         const config = window.OBSEDIAN_CONFIG || {};
 
         if (
@@ -30,6 +36,7 @@
             }
         );
 
+        window.__OBSEDIAN_SUPABASE_CLIENT = authClient;
         return authClient;
     }
 

@@ -42,6 +42,7 @@ Deno.serve(async (req) => {
             );
 
         if (!signature) {
+            console.warn("[razorpay-webhook] Rejected request: x-razorpay-signature header is missing.");
             return json(
                 {
                     error:
@@ -60,6 +61,7 @@ Deno.serve(async (req) => {
             );
 
         if (!secret) {
+            console.error("[razorpay-webhook] RAZORPAY_WEBHOOK_SECRET is not configured.");
             return json(
                 {
                     error:
@@ -70,25 +72,28 @@ Deno.serve(async (req) => {
         }
 
         /*
-         * Verify HMAC-SHA256
+         * Verify HMAC-SHA256 against the exact raw request body.
+         * Do not parse/re-serialize JSON before signature verification.
          */
+        const validSignature = await verifyHmacSha256(
+            secret,
+            rawBody,
+            signature
+        );
 
-        const expected =
-            await hmacSha256(
-                secret,
-                rawBody
+        if (!validSignature) {
+            console.warn(
+                "[razorpay-webhook] Signature verification failed. Ensure RAZORPAY_WEBHOOK_SECRET exactly matches the secret saved on this LIVE Razorpay webhook; do not use the Checkout API key secret.",
+                {
+                    signatureLength: signature.length,
+                    rawBodyBytes: new TextEncoder().encode(rawBody).length,
+                    secretConfigured: true
+                }
             );
-
-        if (
-            !timingSafeEqual(
-                expected,
-                signature
-            )
-        ) {
             return json(
                 {
                     error:
-                        "Invalid webhook signature"
+                        "Invalid webhook signature. Check that the Supabase webhook secret matches the secret configured on the Razorpay webhook."
                 },
                 401
             );
@@ -99,6 +104,8 @@ Deno.serve(async (req) => {
 
         const eventName =
             event?.event;
+
+        console.log("[razorpay-webhook] Signature verified; processing event:", eventName || "unknown");
 
         /*
          * --------------------------------------
@@ -478,71 +485,36 @@ Deno.serve(async (req) => {
 });
 
 
-async function hmacSha256(
+async function verifyHmacSha256(
     secret: string,
-    message: string
-) {
-
-    const key =
-        await crypto.subtle.importKey(
-            "raw",
-            new TextEncoder().encode(
-                secret
-            ),
-            {
-                name:
-                    "HMAC",
-                hash:
-                    "SHA-256"
-            },
-            false,
-            ["sign"]
-        );
-
-    const signature =
-        await crypto.subtle.sign(
-            "HMAC",
-            key,
-            new TextEncoder().encode(
-                message
-            )
-        );
-
-    return [...new Uint8Array(signature)]
-        .map(
-            b =>
-                b
-                    .toString(16)
-                    .padStart(2, "0")
-        )
-        .join("");
-}
-
-
-function timingSafeEqual(
-    a: string,
-    b: string
-) {
-
-    if (a.length !== b.length) {
+    rawBody: string,
+    signatureHex: string
+): Promise<boolean> {
+    // SHA-256 HMAC signatures are 32 bytes represented by exactly 64 hex chars.
+    if (!/^[a-f0-9]{64}$/i.test(signatureHex)) {
         return false;
     }
 
-    let result = 0;
-
-    for (
-        let i = 0;
-        i < a.length;
-        i++
-    ) {
-        result |=
-            a.charCodeAt(i) ^
-            b.charCodeAt(i);
+    const signatureBytes = new Uint8Array(32);
+    for (let i = 0; i < signatureBytes.length; i++) {
+        signatureBytes[i] = Number.parseInt(signatureHex.slice(i * 2, i * 2 + 2), 16);
     }
 
-    return result === 0;
-}
+    const key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["verify"]
+    );
 
+    return await crypto.subtle.verify(
+        "HMAC",
+        key,
+        signatureBytes,
+        new TextEncoder().encode(rawBody)
+    );
+}
 
 function json(
     data: any,

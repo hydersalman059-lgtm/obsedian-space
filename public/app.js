@@ -1,12 +1,18 @@
 const C = window.OBSEDIAN_CONFIG || {};
 
-const sb = supabase.createClient(C.SUPABASE_URL, C.SUPABASE_PUBLISHABLE_KEY, {
-    auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-    }
-});
+// Reuse one Supabase client across app.js, auth-ui.js, and inline auth helpers.
+const sb = window.__OBSEDIAN_SUPABASE_CLIENT ||
+    (window.__OBSEDIAN_SUPABASE_CLIENT = supabase.createClient(
+        C.SUPABASE_URL,
+        C.SUPABASE_PUBLISHABLE_KEY,
+        {
+            auth: {
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true
+            }
+        }
+    ));
 
 const $ = x => document.getElementById(x);
 
